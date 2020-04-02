@@ -2,17 +2,18 @@ use crate::file::*;
 use crate::progress::Progress;
 
 use clap;
-use ssh2::Session;
+use ssh2;
 use std::env;
 use std::error::Error;
 use std::iter::Iterator;
-use std::net::{TcpStream, ToSocketAddrs};
+use std::net::TcpStream;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use termion::event::Key;
 
 pub struct Rftp {
+    session: ssh2::Session,
     sftp: Arc<ssh2::Sftp>,
     local_files: Arc<Mutex<LocalFileList>>,
     remote_files: Arc<Mutex<RemoteFileList>>,
@@ -39,34 +40,11 @@ impl Rftp {
         )
         .get_matches();
 
+        let destination = matches.value_of("destination").unwrap();
         let username = matches.value_of("username").unwrap();
-
-        let address = {
-            let ip = matches.value_of("destination").unwrap();
-            let mut addresses = if let Some(port) = matches.value_of("port") {
-                let port = port
-                    .parse::<u16>()
-                    .map_err(|_| "unable to parse port number")?;
-                (ip, port).to_socket_addrs()?
-            } else {
-                ip.to_socket_addrs().unwrap_or((ip, 22).to_socket_addrs()?)
-            };
-            addresses.nth(0).unwrap()
-        };
-
-        let tcp = TcpStream::connect(address)?;
-
-        let sftp = {
-            let mut session = Session::new()?;
-            session.set_tcp_stream(tcp);
-            session.handshake()?;
-            session.userauth_agent(username)?;
-            if !session.authenticated() {
-                return Err(Box::from("unable to authenticate session"));
-            }
-            let sftp = session.sftp()?;
-            Arc::new(sftp)
-        };
+        let port = matches.value_of("port");
+        let session = create_session(destination, username, port)?;
+        let sftp = session.sftp()?;
 
         let show_hidden_files = false;
         let selected_file = SelectedFileIndex::None;
@@ -89,7 +67,8 @@ impl Rftp {
         };
 
         Ok(Rftp {
-            sftp,
+            session,
+            sftp: Arc::new(sftp),
             local_files,
             remote_files,
             is_alive: true,
@@ -436,4 +415,73 @@ impl SelectedFileIndex {
             }
         }
     }
+}
+
+impl Drop for Rftp {
+    fn drop(&mut self) {
+        // TODO: Shutdown tcp stream.
+        self.session
+            .disconnect(Some(ssh2::DisconnectCode::ByApplication), "", None)
+            .unwrap();
+    }
+}
+
+fn create_session(
+    destination: &str,
+    username: &str,
+    port: Option<&str>,
+) -> Result<ssh2::Session, Box<dyn Error>> {
+    let tcp = if let Some(port) = port {
+        let port = port
+            .parse::<u16>()
+            .map_err(|_| "unable to parse port number")?;
+        TcpStream::connect((destination, port))?
+    } else {
+        TcpStream::connect(destination).unwrap_or(TcpStream::connect((destination, 22))?)
+    };
+
+    let mut session = ssh2::Session::new()?;
+    session.set_timeout(100000);
+    session.set_compress(true);
+    session.set_tcp_stream(tcp);
+    session.handshake()?;
+
+    let mut auth_methods = session.auth_methods(username)?.split(",");
+    while !session.authenticated() {
+        match auth_methods.next() {
+            Some("password") => {
+                // TODO: I can't get this to work yet.
+                // struct Prompter;
+                // impl ssh2::KeyboardInteractivePrompt for Prompter {
+                //     fn prompt(
+                //         &mut self,
+                //         username: &str,
+                //         instructions: &str,
+                //         prompts: &[ssh2::Prompt],
+                //     ) -> Vec<String> {
+                //         println!("{}", username);
+                //         println!("{}", instructions);
+                //         prompts.iter().map(|p| p.text.to_string()).collect()
+                //     }
+                // }
+                // let mut prompter = Prompter;
+                // session.userauth_keyboard_interactive(username, &mut prompter)?;
+            }
+            Some("publickey") => {
+                session.userauth_agent(username)?;
+            }
+            Some(auth_method) => {
+                // TODO: Handle more authentication methods.
+                eprintln!("Unknown authentication method \"{}\".", auth_method);
+            }
+            None => {
+                session.userauth_agent(username)?;
+                if !session.authenticated() {
+                    return Err(Box::from("unable to authenticate session"));
+                }
+            }
+        }
+    }
+
+    Ok(session)
 }
