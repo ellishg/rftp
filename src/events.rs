@@ -18,10 +18,6 @@ impl EventListener {
         let key_receiver = {
             let (mut tx, rx) = tokio::sync::mpsc::channel(1024);
             tokio::spawn(async move {
-                // FIXME: This task will not be shut down when the channel is closed
-                //        until after it receives another key press. This is because
-                //        the when channel is closed, it doesn't catch the error until
-                //        it tries to send another key press.
                 for key in std::io::stdin().keys() {
                     if let Ok(key) = key {
                         if let Err(_) = tx.send(key).await {

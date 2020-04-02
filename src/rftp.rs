@@ -90,6 +90,16 @@ impl Rftp {
             Key::Esc => {
                 self.is_alive = false;
             }
+            Key::Char('q') => {
+                if self.progress_bars.is_empty() {
+                    self.is_alive = false;
+                } else {
+                    *self.user_message.lock().unwrap() = Some(String::from(
+                        "There are still downloads/uploads in progress. \
+                         Press the Escape key to force quit.",
+                    ));
+                }
+            }
             Key::Char('\n') => {
                 match self.selected_file {
                     SelectedFileIndex::LocalFileIndex(i) => {

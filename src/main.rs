@@ -10,16 +10,22 @@ mod user_interface;
 use events::{Event, EventListener};
 use rftp::Rftp;
 use std::error::Error;
+use std::time::Duration;
 use termion::raw::IntoRawMode;
 use termion::screen::AlternateScreen;
 use tui::backend::TermionBackend;
 
-#[tokio::main]
-async fn main() {
-    run().await.unwrap_or_else(|err| {
-        eprintln!("Error: {}", err);
-        std::process::exit(1);
-    });
+fn main() {
+    let mut runtime = tokio::runtime::Runtime::new().unwrap();
+
+    runtime
+        .block_on(async { run().await })
+        .unwrap_or_else(|err| {
+            eprintln!("Error: {}", err);
+            std::process::exit(1);
+        });
+
+    runtime.shutdown_timeout(Duration::from_secs(0));
 }
 
 async fn run() -> Result<(), Box<dyn Error>> {
