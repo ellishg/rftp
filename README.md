@@ -1,5 +1,6 @@
 # rftp
 A remake of `sftp` written in Rust.
+
 [![Crates.io](https://img.shields.io/crates/v/rftp)](https://crates.io/crates/rftp)
 
 ## Installation
