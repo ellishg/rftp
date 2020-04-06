@@ -25,8 +25,12 @@ impl Progress {
     }
 
     pub fn get_ratio(&self) -> f64 {
-        let bytes_sent = self.bytes_sent.load(Ordering::Relaxed);
-        (bytes_sent as f64) / (self.total_bytes as f64)
+        if self.total_bytes == 0 {
+            0.0
+        } else {
+            let bytes_sent = self.bytes_sent.load(Ordering::Relaxed);
+            (bytes_sent as f64) / (self.total_bytes as f64)
+        }
     }
 
     pub fn is_finished(&self) -> bool {

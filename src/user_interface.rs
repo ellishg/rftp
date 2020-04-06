@@ -121,18 +121,28 @@ fn draw_progress_bar<B>(
     B: tui::backend::Backend,
 {
     let bitrate = progress.get_current_bitrate();
-    let eta = {
-        progress
-            .get_eta()
-            .map(|eta| duration_to_string(eta))
-            .unwrap_or("??:??".to_string())
+    let eta = progress
+        .get_eta()
+        .map(|eta| duration_to_string(eta))
+        .unwrap_or("??:??".to_string());
+    let info = format!("{} {} ETA", bitrate_to_string(bitrate), eta);
+    let width = frame.size().width as usize;
+    let label = if info.len() + 5 >= width {
+        format!(
+            "{title:.max_width$}",
+            title = progress.get_title(),
+            max_width = width
+        )
+    } else {
+        let width = width - info.len() - 1;
+        format!(
+            "{title:min_width$.max_width$} {info}",
+            title = progress.get_title(),
+            min_width = width,
+            max_width = width,
+            info = info,
+        )
     };
-    let label = format!(
-        "{} {} {} ETA",
-        progress.get_title(),
-        bitrate_to_string(bitrate),
-        eta
-    );
     Gauge::default()
         .style(Style::default().fg(Color::Yellow))
         .label(&label)
