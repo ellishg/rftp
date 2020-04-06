@@ -23,14 +23,12 @@ where
 
     let (local_file_list_rect, remote_file_list_rect) = (chunks[0], chunks[1]);
 
-    let title = format!("Local: {}", rftp.get_local_working_path());
-    let items = rftp.get_local_files();
-    let selected = rftp.get_selected_file().get_local_file_index();
+    let (path, items, selected) = rftp.get_local_filelist_as_text();
+    let title = format!("Local: {}", path);
     draw_file_list(&mut frame, local_file_list_rect, &title, items, selected);
 
-    let title = format!("Remote: {}", rftp.get_remote_working_path());
-    let items = rftp.get_remote_filenames();
-    let selected = rftp.get_selected_file().get_remote_file_index();
+    let (path, items, selected) = rftp.get_remote_filelist_as_text();
+    let title = format!("Remote: {}", path);
     draw_file_list(&mut frame, remote_file_list_rect, &title, items, selected);
 }
 

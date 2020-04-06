@@ -15,19 +15,11 @@ use termion::event::Key;
 pub struct Rftp {
     session: ssh2::Session,
     sftp: Arc<ssh2::Sftp>,
-    local_files: Arc<Mutex<LocalFileList>>,
-    remote_files: Arc<Mutex<RemoteFileList>>,
+    files: Arc<Mutex<FileList>>,
     is_alive: bool,
     progress_bars: Vec<Arc<Progress>>,
-    selected_file: SelectedFileIndex,
     show_hidden_files: Arc<AtomicBool>,
     user_message: Arc<Mutex<Option<String>>>,
-}
-
-pub enum SelectedFileIndex {
-    LocalFileIndex(usize),
-    RemoteFileIndex(usize),
-    None,
 }
 
 impl Rftp {
@@ -47,33 +39,20 @@ impl Rftp {
         let sftp = session.sftp()?;
 
         let show_hidden_files = false;
-        let selected_file = SelectedFileIndex::None;
 
-        let local_files = {
-            let path = std::fs::canonicalize(env::current_dir()?)?;
-            let mut list = LocalFileList::new(path)?;
-            if !show_hidden_files {
-                list.remove_hidden();
-            }
-            Arc::new(Mutex::new(list))
-        };
-        let remote_files = {
-            let path = PathBuf::from("./");
-            let mut list = RemoteFileList::new(path, &sftp)?;
-            if !show_hidden_files {
-                list.remove_hidden();
-            }
+        let files = {
+            let local_path = env::current_dir()?;
+            let remote_path = PathBuf::from("./");
+            let list = FileList::new(local_path, remote_path, &sftp, show_hidden_files)?;
             Arc::new(Mutex::new(list))
         };
 
         Ok(Rftp {
             session,
             sftp: Arc::new(sftp),
-            local_files,
-            remote_files,
+            files,
             is_alive: true,
             progress_bars: vec![],
-            selected_file,
             show_hidden_files: Arc::new(AtomicBool::new(show_hidden_files)),
             user_message: Arc::new(Mutex::new(None)),
         })
@@ -84,7 +63,6 @@ impl Rftp {
         Ok(())
     }
 
-    // TODO: Make async.
     pub fn on_event(&mut self, key: Key) -> Result<(), Box<dyn Error>> {
         match key {
             Key::Esc => {
@@ -94,69 +72,55 @@ impl Rftp {
                 if self.progress_bars.is_empty() {
                     self.is_alive = false;
                 } else {
-                    *self.user_message.lock().unwrap() = Some(String::from(
+                    self.warn_user(String::from(
                         "There are still downloads/uploads in progress. \
                          Press the Escape key to force quit.",
                     ));
                 }
             }
             Key::Char('\n') => {
-                match self.selected_file {
-                    SelectedFileIndex::LocalFileIndex(i) => {
-                        let entry = { self.local_files.lock().unwrap().get_entries()[i].clone() };
+                let mut files = self.files.lock().unwrap();
+                match files.get_selected_entry() {
+                    SelectedFileEntry::Local(entry) => {
                         if entry.is_dir() {
-                            {
-                                self.local_files
-                                    .lock()
-                                    .unwrap()
-                                    .set_working_path(entry.path())?;
-                            }
-                            Rftp::fetch_local_files(&self.local_files, &self.show_hidden_files)?;
-                        } else {
-                            *self.user_message.lock().unwrap() = Some(format!(
-                                "Error: Cannot enter {:?} because it is not a directory!",
-                                entry.path()
-                            ));
-                        }
-                    }
-                    SelectedFileIndex::RemoteFileIndex(i) => {
-                        let entry = { self.remote_files.lock().unwrap().get_entries()[i].clone() };
-                        if entry.is_dir() {
-                            {
-                                self.remote_files
-                                    .lock()
-                                    .unwrap()
-                                    .set_working_path(entry.path());
-                            }
-                            Rftp::fetch_remote_files(
-                                &self.remote_files,
-                                &self.sftp,
-                                &self.show_hidden_files,
+                            files.set_local_working_path(
+                                entry.path(),
+                                self.show_hidden_files.load(Ordering::Relaxed),
                             )?;
                         } else {
-                            *self.user_message.lock().unwrap() = Some(format!(
+                            self.warn_user(format!(
                                 "Error: Cannot enter {:?} because it is not a directory!",
                                 entry.path()
                             ));
                         }
                     }
-                    SelectedFileIndex::None => {}
-                };
+                    SelectedFileEntry::Remote(entry) => {
+                        if entry.is_dir() {
+                            files.set_remote_working_path(
+                                entry.path(),
+                                &self.sftp,
+                                self.show_hidden_files.load(Ordering::Relaxed),
+                            )?;
+                        } else {
+                            self.warn_user(format!(
+                                "Error: Cannot enter {:?} because it is not a directory!",
+                                entry.path()
+                            ));
+                        }
+                    }
+                    SelectedFileEntry::None => {
+                        self.warn_user(format!("No directory selected."));
+                    }
+                }
             }
             Key::Char(' ') => {
-                match self.selected_file {
-                    SelectedFileIndex::LocalFileIndex(i) => {
-                        let source = { self.local_files.lock().unwrap().get_entries()[i].clone() };
+                let files = self.files.lock().unwrap();
+                match files.get_selected_entry() {
+                    SelectedFileEntry::Local(source) => {
                         if source.is_file() {
                             let sftp = Arc::clone(&self.sftp);
                             let dest = {
-                                let mut path = {
-                                    self.remote_files
-                                        .lock()
-                                        .unwrap()
-                                        .get_working_path()
-                                        .to_path_buf()
-                                };
+                                let mut path = files.get_remote_working_path().to_path_buf();
                                 path.push(source.file_name().unwrap());
                                 path
                             };
@@ -166,16 +130,15 @@ impl Rftp {
                                 Arc::new(Progress::new(source_filename.clone(), source_len));
                             self.progress_bars.push(Arc::clone(&progress));
                             let user_message = Arc::clone(&self.user_message);
-                            let remote_files = Arc::clone(&self.remote_files);
+                            let files = Arc::clone(&self.files);
                             let show_hidden_files = Arc::clone(&self.show_hidden_files);
                             tokio::spawn(async move {
                                 upload(source, dest, &sftp, &progress)
                                     .await
                                     .and_then(|()| {
-                                        Rftp::fetch_remote_files(
-                                            remote_files.as_ref(),
+                                        files.lock().unwrap().fetch_remote_files(
                                             &sftp,
-                                            &show_hidden_files,
+                                            show_hidden_files.load(Ordering::Relaxed),
                                         )
                                     })
                                     .and_then(|()| {
@@ -188,24 +151,17 @@ impl Rftp {
                                     });
                             });
                         } else {
-                            *self.user_message.lock().unwrap() = Some(format!(
+                            self.warn_user(format!(
                                 "Error: Cannot upload {:?} because it is a directory",
                                 source.path()
                             ));
                         }
                     }
-                    SelectedFileIndex::RemoteFileIndex(i) => {
-                        let source = { self.remote_files.lock().unwrap().get_entries()[i].clone() };
+                    SelectedFileEntry::Remote(source) => {
                         if source.is_file() {
                             let sftp = Arc::clone(&self.sftp);
                             let dest = {
-                                let mut path = {
-                                    self.local_files
-                                        .lock()
-                                        .unwrap()
-                                        .get_working_path()
-                                        .to_path_buf()
-                                };
+                                let mut path = files.get_local_working_path().to_path_buf();
                                 path.push(source.file_name().unwrap());
                                 path
                             };
@@ -215,13 +171,15 @@ impl Rftp {
                                 Arc::new(Progress::new(source_filename.clone(), source_len));
                             self.progress_bars.push(Arc::clone(&progress));
                             let user_message = Arc::clone(&self.user_message);
-                            let local_files = Arc::clone(&self.local_files);
+                            let files = Arc::clone(&self.files);
                             let show_hidden_files = Arc::clone(&self.show_hidden_files);
                             tokio::spawn(async move {
                                 download(source, dest, &sftp, &progress)
                                     .await
                                     .and_then(|()| {
-                                        Rftp::fetch_local_files(&local_files, &show_hidden_files)
+                                        files.lock().unwrap().fetch_local_files(
+                                            show_hidden_files.load(Ordering::Relaxed),
+                                        )
                                     })
                                     .and_then(|()| {
                                         *user_message.lock().unwrap() = Some(format!(
@@ -235,27 +193,33 @@ impl Rftp {
                                     });
                             });
                         } else {
-                            *self.user_message.lock().unwrap() = Some(format!(
-                                "Error: Cannot upload {:?} because it is a directory",
+                            self.warn_user(format!(
+                                "Error: Cannot download {:?} because it is a directory",
                                 source.path()
                             ));
                         }
                     }
-                    SelectedFileIndex::None => {}
-                };
+                    SelectedFileEntry::None => {
+                        self.warn_user(format!("No file selected."));
+                    }
+                }
             }
             Key::Down | Key::Char('j') => {
-                self.selected_file = self.selected_file.next(&|i| i + 1, &self);
+                self.files.lock().unwrap().next_selected();
             }
             Key::Up | Key::Char('k') => {
-                self.selected_file = self.selected_file.next(&|i| i - 1, &self);
+                self.files.lock().unwrap().prev_selected();
             }
             Key::Left | Key::Right | Key::Char('h') | Key::Char('l') => {
-                self.selected_file = self.selected_file.toggle(&self);
+                self.files.lock().unwrap().toggle_selected();
             }
             _ => {}
         };
         Ok(())
+    }
+
+    fn warn_user(&self, message: String) {
+        *self.user_message.lock().unwrap() = Some(message)
     }
 
     pub fn get_progress_bars(&self) -> Vec<&Progress> {
@@ -266,164 +230,26 @@ impl Rftp {
         self.is_alive
     }
 
-    // TODO: Make async.
-    pub fn fetch_local_files(
-        local_files: &Mutex<LocalFileList>,
-        show_hidden_files: &AtomicBool,
-    ) -> std::io::Result<()> {
-        if show_hidden_files.load(Ordering::Relaxed) {
-            let mut local_files = local_files.lock().unwrap();
-            local_files.fetch()?;
-        } else {
-            let mut local_files = local_files.lock().unwrap();
-            local_files.fetch()?;
-            local_files.remove_hidden();
-        }
-        Ok(())
+    // TODO: Return Text instead of String.
+    pub fn get_local_filelist_as_text(&self) -> (String, Vec<String>, Option<usize>) {
+        let files = self.files.lock().unwrap();
+        let path = format!("{}", files.get_local_working_path().display());
+        let (entries, _) = files.get_file_entries();
+        let entries = entries.iter().map(|entry| entry.to_text()).collect();
+        (path, entries, files.get_local_selected_index())
     }
 
-    pub fn fetch_remote_files(
-        remote_files: &Mutex<RemoteFileList>,
-        sftp: &ssh2::Sftp,
-        show_hidden_files: &AtomicBool,
-    ) -> std::io::Result<()> {
-        if show_hidden_files.load(Ordering::Relaxed) {
-            let mut remote_files = remote_files.lock().unwrap();
-            remote_files.fetch(sftp)?;
-        } else {
-            let mut remote_files = remote_files.lock().unwrap();
-            remote_files.fetch(sftp)?;
-            remote_files.remove_hidden();
-        }
-        Ok(())
-    }
-
-    pub fn get_local_files(&self) -> Vec<String> {
-        self.local_files
-            .lock()
-            .unwrap()
-            .get_entries()
-            .iter()
-            .map(|entry| entry.to_text())
-            .collect()
-    }
-
-    pub fn get_remote_filenames(&self) -> Vec<String> {
-        self.remote_files
-            .lock()
-            .unwrap()
-            .get_entries()
-            .iter()
-            .map(|entry| entry.to_text())
-            .collect()
-    }
-
-    pub fn get_selected_file(&self) -> &SelectedFileIndex {
-        &self.selected_file
-    }
-
-    pub fn get_local_working_path(&self) -> String {
-        self.local_files
-            .lock()
-            .unwrap()
-            .get_working_path()
-            .to_str()
-            .unwrap()
-            .to_string()
-    }
-
-    pub fn get_remote_working_path(&self) -> String {
-        self.remote_files
-            .lock()
-            .unwrap()
-            .get_working_path()
-            .to_str()
-            .unwrap()
-            .to_string()
+    // TODO: Return Text instead of String.
+    pub fn get_remote_filelist_as_text(&self) -> (String, Vec<String>, Option<usize>) {
+        let files = self.files.lock().unwrap();
+        let path = format!("{}", files.get_remote_working_path().display());
+        let (_, entries) = files.get_file_entries();
+        let entries = entries.iter().map(|entry| entry.to_text()).collect();
+        (path, entries, files.get_remote_selected_index())
     }
 
     pub fn get_user_message(&self) -> Option<String> {
         self.user_message.lock().unwrap().clone()
-    }
-}
-
-impl SelectedFileIndex {
-    pub fn get_local_file_index(&self) -> Option<usize> {
-        match self {
-            SelectedFileIndex::LocalFileIndex(i) => Some(*i),
-            _ => None,
-        }
-    }
-
-    pub fn get_remote_file_index(&self) -> Option<usize> {
-        match self {
-            SelectedFileIndex::RemoteFileIndex(i) => Some(*i),
-            _ => None,
-        }
-    }
-
-    fn next(&self, f: &dyn Fn(usize) -> usize, rftp: &Rftp) -> Self {
-        match self {
-            SelectedFileIndex::RemoteFileIndex(i) => {
-                let num_files = { rftp.remote_files.lock().unwrap().len() };
-                if num_files == 0 {
-                    SelectedFileIndex::None.next(f, rftp)
-                } else {
-                    SelectedFileIndex::RemoteFileIndex(f(num_files + *i) % num_files)
-                }
-            }
-            SelectedFileIndex::LocalFileIndex(i) => {
-                let num_files = { rftp.local_files.lock().unwrap().len() };
-                if num_files == 0 {
-                    SelectedFileIndex::None.next(f, rftp)
-                } else {
-                    SelectedFileIndex::LocalFileIndex(f(num_files + *i) % num_files)
-                }
-            }
-            SelectedFileIndex::None => {
-                let num_local_files = { rftp.local_files.lock().unwrap().len() };
-                let num_remote_files = { rftp.remote_files.lock().unwrap().len() };
-                if num_remote_files > 0 {
-                    SelectedFileIndex::RemoteFileIndex(0)
-                } else if num_local_files > 0 {
-                    SelectedFileIndex::LocalFileIndex(0)
-                } else {
-                    SelectedFileIndex::None
-                }
-            }
-        }
-    }
-
-    fn toggle(&self, rftp: &Rftp) -> Self {
-        match self {
-            SelectedFileIndex::LocalFileIndex(_) => {
-                let num_remote_files = { rftp.remote_files.lock().unwrap().len() };
-                if num_remote_files > 0 {
-                    SelectedFileIndex::RemoteFileIndex(0)
-                } else {
-                    SelectedFileIndex::None.toggle(rftp)
-                }
-            }
-            SelectedFileIndex::RemoteFileIndex(_) => {
-                let num_local_files = { rftp.local_files.lock().unwrap().len() };
-                if num_local_files > 0 {
-                    SelectedFileIndex::LocalFileIndex(0)
-                } else {
-                    SelectedFileIndex::None.toggle(rftp)
-                }
-            }
-            SelectedFileIndex::None => {
-                let num_local_files = { rftp.local_files.lock().unwrap().len() };
-                let num_remote_files = { rftp.remote_files.lock().unwrap().len() };
-                if num_remote_files > 0 {
-                    SelectedFileIndex::RemoteFileIndex(0)
-                } else if num_local_files > 0 {
-                    SelectedFileIndex::LocalFileIndex(0)
-                } else {
-                    SelectedFileIndex::None
-                }
-            }
-        }
     }
 }
 

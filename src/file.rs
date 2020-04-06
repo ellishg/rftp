@@ -19,15 +19,24 @@ pub enum RemoteFileEntry {
     Parent(PathBuf),
 }
 
-pub struct LocalFileList {
-    directory: PathBuf,
-    entries: Vec<LocalFileEntry>,
-    // selected: Option<usize>,
+pub enum SelectedFileEntry {
+    Local(LocalFileEntry),
+    Remote(RemoteFileEntry),
+    None,
 }
 
-pub struct RemoteFileList {
-    directory: PathBuf,
-    entries: Vec<RemoteFileEntry>,
+enum SelectedFileEntryIndex {
+    Local(usize),
+    Remote(usize),
+    None,
+}
+
+pub struct FileList {
+    local_directory: PathBuf,
+    remote_directory: PathBuf,
+    local_entries: Vec<LocalFileEntry>,
+    remote_entries: Vec<RemoteFileEntry>,
+    selected: SelectedFileEntryIndex,
 }
 
 const CHUNK_SIZE: usize = 1024 * 1024 * 8;
@@ -39,7 +48,7 @@ pub async fn download(
     dest: impl AsRef<Path>,
     sftp: &ssh2::Sftp,
     progress: &Progress,
-) -> std::io::Result<()> {
+) -> Result<()> {
     assert!(source.is_file(), "Source must be a file!");
     let source = source.path();
     let mut source = sftp.open(&source)?;
@@ -71,7 +80,7 @@ pub async fn upload(
     dest: impl AsRef<Path>,
     sftp: &ssh2::Sftp,
     progress: &Progress,
-) -> std::io::Result<()> {
+) -> Result<()> {
     assert!(source.is_file(), "Source must be a file!");
     let source = source.path();
     let source = tokio::fs::File::open(source).await?;
@@ -158,6 +167,7 @@ impl LocalFileEntry {
             LocalFileEntry::Parent(path) => path,
         }
     }
+
     pub fn file_name(&self) -> Option<&OsStr> {
         match self {
             LocalFileEntry::File(path) => path.file_name(),
@@ -202,6 +212,7 @@ impl LocalFileEntry {
         }
     }
 
+    // TODO: Return Text.
     pub fn to_text(&self) -> String {
         match self {
             LocalFileEntry::File(path) => {
@@ -283,81 +294,166 @@ impl RemoteFileEntry {
     }
 }
 
-impl LocalFileList {
-    pub fn new(path: impl AsRef<Path>) -> std::io::Result<Self> {
-        let mut list = LocalFileList {
-            directory: path.as_ref().to_path_buf(),
-            entries: vec![],
-            // selected: None,
+impl FileList {
+    pub fn new(
+        local_path: impl AsRef<Path>,
+        remote_path: impl AsRef<Path>,
+        sftp: &ssh2::Sftp,
+        keep_hidden_files: bool,
+    ) -> Result<Self> {
+        let mut list = FileList {
+            local_directory: PathBuf::new(),
+            remote_directory: PathBuf::new(),
+            local_entries: vec![],
+            remote_entries: vec![],
+            selected: SelectedFileEntryIndex::None,
         };
-        list.fetch()?;
+        list.set_local_working_path(local_path, keep_hidden_files)?;
+        list.set_remote_working_path(remote_path, sftp, keep_hidden_files)?;
         Ok(list)
     }
 
-    pub fn fetch(&mut self) -> std::io::Result<()> {
-        self.entries = read_local_dir(&self.directory)?;
+    pub fn fetch_local_files(&mut self, keep_hidden_files: bool) -> Result<()> {
+        let mut entries = read_local_dir(&self.local_directory)?;
+        if !keep_hidden_files {
+            entries.retain(|entry| !entry.is_hidden());
+        }
+        self.local_entries = entries;
         Ok(())
     }
 
-    pub fn remove_hidden(&mut self) {
-        self.entries.retain(|entry| !entry.is_hidden());
-    }
-
-    // pub fn get_selected(&self) -> Option<&LocalFileEntry> {
-    //     self.selected.map(|i| &self.entries[i])
-    // }
-
-    pub fn set_working_path(&mut self, path: impl AsRef<Path>) -> std::io::Result<()> {
-        self.directory = std::fs::canonicalize(path.as_ref().to_path_buf())?;
+    pub fn fetch_remote_files(&mut self, sftp: &ssh2::Sftp, keep_hidden_files: bool) -> Result<()> {
+        let mut entries = read_remote_dir(&self.remote_directory, sftp)?;
+        if !keep_hidden_files {
+            entries.retain(|entry| !entry.is_hidden());
+        }
+        self.remote_entries = entries;
         Ok(())
     }
 
-    pub fn get_working_path(&self) -> PathBuf {
-        self.directory.to_path_buf()
-    }
-
-    pub fn get_entries(&self) -> &Vec<LocalFileEntry> {
-        &self.entries
-    }
-
-    pub fn len(&self) -> usize {
-        self.entries.len()
-    }
-}
-
-impl RemoteFileList {
-    pub fn new(path: impl AsRef<Path>, sftp: &ssh2::Sftp) -> std::io::Result<Self> {
-        let mut list = RemoteFileList {
-            directory: path.as_ref().to_path_buf(),
-            entries: vec![],
-        };
-        list.fetch(sftp)?;
-        Ok(list)
-    }
-
-    pub fn fetch(&mut self, sftp: &ssh2::Sftp) -> std::io::Result<()> {
-        self.entries = read_remote_dir(&self.directory, sftp)?;
+    pub fn set_local_working_path(
+        &mut self,
+        path: impl AsRef<Path>,
+        keep_hidden_files: bool,
+    ) -> Result<()> {
+        self.local_directory = std::fs::canonicalize(path)?;
+        self.fetch_local_files(keep_hidden_files)?;
         Ok(())
     }
 
-    pub fn remove_hidden(&mut self) {
-        self.entries.retain(|entry| !entry.is_hidden());
-    }
-
-    pub fn set_working_path(&mut self, path: impl AsRef<Path>) {
+    pub fn set_remote_working_path(
+        &mut self,
+        path: impl AsRef<Path>,
+        sftp: &ssh2::Sftp,
+        keep_hidden_files: bool,
+    ) -> Result<()> {
         // TODO: canonicalize
-        self.directory = path.as_ref().to_path_buf();
+        self.remote_directory = path.as_ref().to_path_buf();
+        self.fetch_remote_files(sftp, keep_hidden_files)?;
+        Ok(())
     }
 
-    pub fn get_working_path(&self) -> PathBuf {
-        self.directory.to_path_buf()
+    pub fn get_local_working_path(&self) -> &Path {
+        &self.local_directory
     }
 
-    pub fn get_entries(&self) -> &Vec<RemoteFileEntry> {
-        &self.entries
+    pub fn get_remote_working_path(&self) -> &Path {
+        &self.remote_directory
     }
 
-    pub fn len(&self) -> usize {
-        self.entries.len()
+    pub fn get_file_entries(&self) -> (&Vec<LocalFileEntry>, &Vec<RemoteFileEntry>) {
+        (&self.local_entries, &self.remote_entries)
+    }
+
+    pub fn get_selected_entry(&self) -> SelectedFileEntry {
+        match self.selected {
+            SelectedFileEntryIndex::Local(i) => {
+                let entry = self.local_entries[i].clone();
+                SelectedFileEntry::Local(entry)
+            }
+            SelectedFileEntryIndex::Remote(i) => {
+                let entry = self.remote_entries[i].clone();
+                SelectedFileEntry::Remote(entry)
+            }
+            SelectedFileEntryIndex::None => SelectedFileEntry::None,
+        }
+    }
+
+    pub fn get_local_selected_index(&self) -> Option<usize> {
+        match self.selected {
+            SelectedFileEntryIndex::Local(i) => Some(i),
+            _ => None,
+        }
+    }
+
+    pub fn get_remote_selected_index(&self) -> Option<usize> {
+        match self.selected {
+            SelectedFileEntryIndex::Remote(i) => Some(i),
+            _ => None,
+        }
+    }
+
+    fn apply_op_to_selected<F>(&mut self, f: F)
+    where
+        F: Fn(isize) -> isize,
+    {
+        self.selected = match self.selected {
+            SelectedFileEntryIndex::Local(i) => {
+                assert!(!self.local_entries.is_empty());
+                let n = self.local_entries.len();
+                SelectedFileEntryIndex::Local(f(i as isize).rem_euclid(n as isize) as usize)
+            }
+            SelectedFileEntryIndex::Remote(i) => {
+                assert!(!self.remote_entries.is_empty());
+                let n = self.remote_entries.len();
+                SelectedFileEntryIndex::Remote(f(i as isize).rem_euclid(n as isize) as usize)
+            }
+            SelectedFileEntryIndex::None => {
+                if !self.remote_entries.is_empty() {
+                    SelectedFileEntryIndex::Remote(0)
+                } else if !self.local_entries.is_empty() {
+                    SelectedFileEntryIndex::Local(0)
+                } else {
+                    SelectedFileEntryIndex::None
+                }
+            }
+        }
+    }
+
+    pub fn next_selected(&mut self) {
+        self.apply_op_to_selected(|i| i + 1)
+    }
+
+    pub fn prev_selected(&mut self) {
+        self.apply_op_to_selected(|i| i - 1)
+    }
+
+    pub fn toggle_selected(&mut self) {
+        self.selected = match self.selected {
+            SelectedFileEntryIndex::Local(i) => {
+                if !self.remote_entries.is_empty() {
+                    SelectedFileEntryIndex::Remote(i)
+                } else {
+                    SelectedFileEntryIndex::None
+                }
+            }
+            SelectedFileEntryIndex::Remote(i) => {
+                if !self.local_entries.is_empty() {
+                    SelectedFileEntryIndex::Local(i)
+                } else {
+                    SelectedFileEntryIndex::None
+                }
+            }
+            SelectedFileEntryIndex::None => {
+                if !self.remote_entries.is_empty() {
+                    SelectedFileEntryIndex::Remote(0)
+                } else if !self.local_entries.is_empty() {
+                    SelectedFileEntryIndex::Local(0)
+                } else {
+                    SelectedFileEntryIndex::None
+                }
+            }
+        };
+        self.apply_op_to_selected(|i| i);
     }
 }
