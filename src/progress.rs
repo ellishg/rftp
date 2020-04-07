@@ -1,22 +1,27 @@
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
+
+const HISTORY_MAX_AGE: Duration = Duration::from_secs(5);
 
 pub struct Progress {
     title: String,
     bytes_sent: AtomicU64,
     total_bytes: u64,
-    start_time: Instant,
     is_finished: AtomicBool,
+    history: Mutex<VecDeque<(Instant, u64)>>,
 }
 
 impl Progress {
     pub fn new(title: String, total_bytes: u64) -> Self {
+        let history = Mutex::new(vec![(Instant::now(), 0)].into_iter().collect());
         Progress {
             title,
             bytes_sent: AtomicU64::new(0),
             total_bytes,
-            start_time: Instant::now(),
             is_finished: AtomicBool::new(false),
+            history,
         }
     }
 
@@ -29,7 +34,11 @@ impl Progress {
             0.0
         } else {
             let bytes_sent = self.bytes_sent.load(Ordering::Relaxed);
-            (bytes_sent as f64) / (self.total_bytes as f64)
+            if bytes_sent >= self.total_bytes {
+                1.0
+            } else {
+                (bytes_sent as f64) / (self.total_bytes as f64)
+            }
         }
     }
 
@@ -38,8 +47,22 @@ impl Progress {
     }
 
     pub fn inc(&self, bytes: u64) {
-        let bytes_sent = self.bytes_sent.fetch_add(bytes, Ordering::Relaxed);
-        assert!(bytes_sent <= self.total_bytes);
+        {
+            let now = Instant::now();
+            let max_age = now - HISTORY_MAX_AGE;
+            let mut history = self.history.lock().unwrap();
+            history.push_back((now, bytes));
+            loop {
+                if let Some((t, _)) = history.front() {
+                    if *t <= max_age {
+                        history.pop_front();
+                        continue;
+                    }
+                }
+                break;
+            }
+        }
+        self.bytes_sent.fetch_add(bytes, Ordering::Relaxed);
     }
 
     pub fn finish(&self) {
@@ -47,13 +70,21 @@ impl Progress {
     }
 
     pub fn get_current_bitrate(&self) -> u64 {
-        // TODO: Use moving average
-        let bytes_sent = self.bytes_sent.load(Ordering::Relaxed) as f64;
-        let seconds = {
-            let runtime = Instant::now() - self.start_time;
-            runtime.as_secs() as f64 + runtime.subsec_nanos() as f64 * 1e-9
-        };
-        8 * (bytes_sent / seconds) as u64
+        let history = self.history.lock().unwrap();
+        if let Some(age) = history.iter().map(|(t, _)| t).min() {
+            let bits_sent = 8.0 * history.iter().map(|(_, b)| b).sum::<u64>() as f64;
+            let seconds = {
+                let runtime = Instant::now() - *age;
+                runtime.as_secs() as f64 + runtime.subsec_nanos() as f64 * 1e-9
+            };
+            if seconds == 0.0 {
+                0
+            } else {
+                (bits_sent / seconds) as u64
+            }
+        } else {
+            0
+        }
     }
 
     pub fn get_eta(&self) -> Option<Duration> {
@@ -61,10 +92,15 @@ impl Progress {
         if bytes_per_second == 0 {
             None
         } else {
-            let remaining_bytes = self.total_bytes - self.bytes_sent.load(Ordering::Relaxed);
-            Some(Duration::from_secs_f64(
-                remaining_bytes as f64 / bytes_per_second as f64,
-            ))
+            let bytes_sent = self.bytes_sent.load(Ordering::Relaxed);
+            if bytes_sent <= self.total_bytes {
+                let remaining_bytes = self.total_bytes - bytes_sent;
+                Some(Duration::from_secs_f64(
+                    remaining_bytes as f64 / bytes_per_second as f64,
+                ))
+            } else {
+                None
+            }
         }
     }
 }
