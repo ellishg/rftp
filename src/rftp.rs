@@ -126,8 +126,7 @@ impl Rftp {
                             };
                             let source_len = source.len()?.unwrap();
                             let source_filename = source.path().to_str().unwrap().to_string();
-                            let progress =
-                                Arc::new(Progress::new(source_filename.clone(), source_len));
+                            let progress = Arc::new(Progress::new(&source_filename, source_len));
                             self.progress_bars.push(Arc::clone(&progress));
                             let user_message = Arc::clone(&self.user_message);
                             let files = Arc::clone(&self.files);
@@ -167,8 +166,7 @@ impl Rftp {
                             };
                             let source_len = source.len().unwrap();
                             let source_filename = source.path().to_str().unwrap().to_string();
-                            let progress =
-                                Arc::new(Progress::new(source_filename.clone(), source_len));
+                            let progress = Arc::new(Progress::new(&source_filename, source_len));
                             self.progress_bars.push(Arc::clone(&progress));
                             let user_message = Arc::clone(&self.user_message);
                             let files = Arc::clone(&self.files);
