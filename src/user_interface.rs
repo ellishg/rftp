@@ -40,6 +40,8 @@ fn draw_user_message<B>(
 where
     B: tui::backend::Backend,
 {
+    // TODO: Take a list of messages and give a timeout for each.
+    // TODO: Messages that are too long should be split to different lines.
     match message {
         Some(message) => {
             let chunks = Layout::default()
@@ -170,5 +172,68 @@ fn bitrate_to_string(rate: u64) -> String {
         format!("{:.1} Mbit/s", rate as f64 / 1e6)
     } else {
         format!("{:.1} Gbit/s", rate as f64 / 1e9)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+    use tui::{backend::TestBackend, buffer::Buffer, Terminal};
+
+    #[test]
+    fn test_duration() {
+        assert_eq!(
+            duration_to_string(Duration::from_secs(12)),
+            "00:12".to_string()
+        );
+        assert_eq!(
+            duration_to_string(Duration::from_secs(123)),
+            "02:03".to_string()
+        );
+        assert_eq!(
+            duration_to_string(Duration::from_secs(2 * 60 * 60 + 40 * 60 + 59)),
+            "2:40:59".to_string()
+        );
+    }
+
+    #[test]
+    fn test_bitrate() {
+        assert_eq!(bitrate_to_string(4), "4 bit/s".to_string());
+        assert_eq!(bitrate_to_string(1e3 as u64), "1.0 Kbit/s".to_string());
+        assert_eq!(bitrate_to_string(3e6 as u64), "3.0 Mbit/s".to_string());
+        assert_eq!(bitrate_to_string(7e9 as u64), "7.0 Gbit/s".to_string());
+    }
+
+    #[test]
+    fn test_user_message() {
+        let mut terminal = Terminal::new(TestBackend::new(50, 3)).unwrap();
+
+        terminal
+            .draw(|mut frame| {
+                let rect = frame.size();
+                let rect = draw_user_message(&mut frame, rect, None);
+                let rect =
+                    draw_user_message(&mut frame, rect, Some("This is one message.".to_string()));
+                let rect = draw_user_message(&mut frame, rect, None);
+                let rect =
+                    draw_user_message(&mut frame, rect, Some("And here is a second.".to_string()));
+                let rect = draw_user_message(
+                    &mut frame,
+                    rect,
+                    Some("This one is far too large to fit on one single line.".to_string()),
+                );
+                let _rect = draw_user_message(&mut frame, rect, None);
+            })
+            .unwrap();
+
+        assert_eq!(
+            *terminal.backend().buffer(),
+            Buffer::with_lines(vec![
+                "This one is far too large to fit on one single lin",
+                "And here is a second.                             ",
+                "This is one message.                              ",
+            ])
+        );
     }
 }

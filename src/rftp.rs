@@ -319,5 +319,7 @@ fn create_session(
         }
     }
 
+    // TODO: Check known hosts.
+
     Ok(session)
 }
