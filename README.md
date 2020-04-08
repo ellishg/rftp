@@ -2,6 +2,7 @@
 A remake of `sftp` written in Rust.
 
 [![Crates.io](https://img.shields.io/crates/v/rftp)](https://crates.io/crates/rftp)
+[![Build Status](https://travis-ci.org/ellishg/rftp.svg?branch=master)](https://travis-ci.org/ellishg/rftp)
 
 ## Installation
 This will install `rftp` to `~/.cargo/bin`.
