@@ -104,61 +104,6 @@ pub async fn upload(
     Ok(())
 }
 
-/// Reads the local directory `path` and returns its entries.
-pub fn read_local_dir(path: impl AsRef<Path>) -> Result<Vec<LocalFileEntry>> {
-    // TODO: Can be async
-    // let mut entries = tokio::fs::read_dir(path).await?;
-    // let mut local_entries = vec![];
-    // while let Some(entry) = entries.next_entry().await? {
-    //     let file_type = entry.file_type().await?;
-    //     if file_type.is_file() {
-    //         local_entries.push(LocalFileEntry::File(entry.path()));
-    //     } else {
-    //         local_entries.push(LocalFileEntry::Directory(entry.path()));
-    //     }
-    // }
-    let mut local_entries = vec![];
-    if path.as_ref().parent().is_some() {
-        let dotdot = {
-            let mut path = path.as_ref().to_path_buf();
-            path.push("..");
-            LocalFileEntry::Parent(path)
-        };
-        local_entries.push(dotdot);
-    }
-    for entry in std::fs::read_dir(path)? {
-        let path = entry?.path();
-        if path.is_file() {
-            local_entries.push(LocalFileEntry::File(path));
-        } else {
-            local_entries.push(LocalFileEntry::Directory(path));
-        }
-    }
-    Ok(local_entries)
-}
-
-/// Reads the remote directory `path` and returns its entries.
-pub fn read_remote_dir(path: impl AsRef<Path>, sftp: &ssh2::Sftp) -> Result<Vec<RemoteFileEntry>> {
-    // TODO: Make async.
-    let mut remote_entries = vec![];
-    if path.as_ref().parent().is_some() {
-        let dotdot = {
-            let mut path = path.as_ref().to_path_buf();
-            path.push("..");
-            RemoteFileEntry::Parent(path)
-        };
-        remote_entries.push(dotdot);
-    }
-    remote_entries.extend(sftp.readdir(path.as_ref())?.iter().map(|(path, stat)| {
-        if stat.is_file() {
-            RemoteFileEntry::File(path.to_path_buf(), stat.size.unwrap())
-        } else {
-            RemoteFileEntry::Directory(path.to_path_buf())
-        }
-    }));
-    Ok(remote_entries)
-}
-
 impl LocalFileEntry {
     pub fn path(&self) -> &Path {
         match self {
@@ -314,20 +259,56 @@ impl FileList {
     }
 
     pub fn fetch_local_files(&mut self, keep_hidden_files: bool) -> Result<()> {
-        let mut entries = read_local_dir(&self.local_directory)?;
-        if !keep_hidden_files {
-            entries.retain(|entry| !entry.is_hidden());
+        // TODO: Sort files.
+        self.local_entries = vec![];
+        if self.local_directory.parent().is_some() {
+            let dotdot = {
+                let mut path = self.local_directory.to_path_buf();
+                path.push("..");
+                LocalFileEntry::Parent(path)
+            };
+            self.local_entries.push(dotdot);
         }
-        self.local_entries = entries;
+        for entry in std::fs::read_dir(&self.local_directory)? {
+            let path = entry?.path();
+            if path.is_file() {
+                self.local_entries.push(LocalFileEntry::File(path));
+            } else {
+                self.local_entries.push(LocalFileEntry::Directory(path));
+            }
+        }
+        if !keep_hidden_files {
+            self.local_entries.retain(|entry| !entry.is_hidden());
+        }
         Ok(())
     }
 
     pub fn fetch_remote_files(&mut self, sftp: &ssh2::Sftp, keep_hidden_files: bool) -> Result<()> {
-        let mut entries = read_remote_dir(&self.remote_directory, sftp)?;
-        if !keep_hidden_files {
-            entries.retain(|entry| !entry.is_hidden());
+        // TODO: Sort files.
+        self.remote_entries = vec![];
+        if self.remote_directory.parent().is_some() {
+            let dotdot = {
+                let mut path = self.remote_directory.to_path_buf();
+                path.push("..");
+                RemoteFileEntry::Parent(path)
+            };
+            self.remote_entries.push(dotdot);
         }
-        self.remote_entries = entries;
+        self.remote_entries
+            .extend(
+                sftp.readdir(&self.remote_directory)?
+                    .iter()
+                    .map(|(path, stat)| {
+                        if stat.is_file() {
+                            RemoteFileEntry::File(path.to_path_buf(), stat.size.unwrap())
+                        } else {
+                            RemoteFileEntry::Directory(path.to_path_buf())
+                        }
+                    }),
+            );
+        if !keep_hidden_files {
+            self.remote_entries.retain(|entry| !entry.is_hidden());
+        }
         Ok(())
     }
 
