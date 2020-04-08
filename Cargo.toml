@@ -4,7 +4,9 @@ version = "0.1.0"
 authors = ["Ellis Hoag <ellis.sparky.hoag@gmail.com>"]
 edition = "2018"
 license = "MIT"
-description = "Download and upload files from a server via sftp"
+description = "Download and upload files from a server via sftp."
+readme = "README.md"
+keywords = ["sftp", "ssh", "scp"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
