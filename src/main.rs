@@ -22,7 +22,7 @@ fn main() {
     runtime
         .block_on(async { run().await })
         .unwrap_or_else(|err| {
-            eprintln!("Error: {}", err);
+            eprintln!("Error: {}.", err);
             std::process::exit(1);
         });
 

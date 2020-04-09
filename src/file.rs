@@ -46,6 +46,7 @@ pub struct FileList {
     selected: SelectedFileEntryIndex,
 }
 
+// TODO: Tune this variable to make downloads/uploads faster.
 const CHUNK_SIZE: usize = 1024 * 1024 * 8;
 
 /// Reads the remote file `source`, creates/truncates the local file `dest`,
@@ -268,12 +269,8 @@ impl FileList {
     pub fn fetch_local_files(&mut self, keep_hidden_files: bool) -> Result<()> {
         self.local_entries = vec![];
         if self.local_directory.parent().is_some() {
-            let dotdot = {
-                let mut path = self.local_directory.to_path_buf();
-                path.push("..");
-                LocalFileEntry::Parent(path)
-            };
-            self.local_entries.push(dotdot);
+            let dotdot = self.local_directory.join("..");
+            self.local_entries.push(LocalFileEntry::Parent(dotdot));
         }
         for entry in std::fs::read_dir(&self.local_directory)? {
             let path = entry?.path();
@@ -293,12 +290,8 @@ impl FileList {
     pub fn fetch_remote_files(&mut self, sftp: &ssh2::Sftp, keep_hidden_files: bool) -> Result<()> {
         self.remote_entries = vec![];
         if self.remote_directory.parent().is_some() {
-            let dotdot = {
-                let mut path = self.remote_directory.to_path_buf();
-                path.push("..");
-                RemoteFileEntry::Parent(path)
-            };
-            self.remote_entries.push(dotdot);
+            let dotdot = self.remote_directory.join("..");
+            self.remote_entries.push(RemoteFileEntry::Parent(dotdot));
         }
         self.remote_entries
             .extend(

@@ -6,8 +6,10 @@ use clap;
 use ssh2;
 use std::env;
 use std::error::Error;
+use std::io::Write;
 use std::iter::Iterator;
 use std::net::TcpStream;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -115,16 +117,15 @@ impl Rftp {
                 }
             }
             Key::Char(' ') => {
+                // TODO: Only download/upload one file at a time and add extra commands to queue.
                 let files = self.files.lock().unwrap();
                 match files.get_selected_entry() {
                     SelectedFileEntry::Local(source) => {
                         if source.is_file() {
                             let sftp = Arc::clone(&self.sftp);
-                            let dest = {
-                                let mut path = files.get_remote_working_path().to_path_buf();
-                                path.push(source.file_name().unwrap());
-                                path
-                            };
+                            let dest = files
+                                .get_remote_working_path()
+                                .join(source.file_name().unwrap());
                             let source_len = source.len()?.unwrap();
                             let source_filename = source.path().to_str().unwrap().to_string();
                             let progress = Arc::new(Progress::new(&source_filename, source_len));
@@ -162,11 +163,9 @@ impl Rftp {
                     SelectedFileEntry::Remote(source) => {
                         if source.is_file() {
                             let sftp = Arc::clone(&self.sftp);
-                            let dest = {
-                                let mut path = files.get_local_working_path().to_path_buf();
-                                path.push(source.file_name().unwrap());
-                                path
-                            };
+                            let dest = files
+                                .get_local_working_path()
+                                .join(source.file_name().unwrap());
                             let source_len = source.len().unwrap();
                             let source_filename = source.path().to_str().unwrap().to_string();
                             let progress = Arc::new(Progress::new(&source_filename, source_len));
@@ -303,7 +302,39 @@ fn create_session(
         }
     }
 
-    // TODO: Check known hosts.
-
-    Ok(session)
+    let mut known_hosts = session.known_hosts()?;
+    let known_hosts_path = Path::new(&env::var("HOME")?).join(".ssh/known_hosts");
+    known_hosts.read_file(&known_hosts_path, ssh2::KnownHostFileKind::OpenSSH)?;
+    let (key, key_type) = session.host_key().ok_or("unable to get host key")?;
+    match known_hosts.check(destination, key) {
+        ssh2::CheckResult::Match => Ok(session),
+        ssh2::CheckResult::NotFound => {
+            println!(
+                "The host key for {} was not found in {:?}.",
+                destination, known_hosts_path
+            );
+            print!("Would you like to add it (yes/no)? ");
+            std::io::stdout().flush()?;
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input)?;
+            match input.trim().as_ref() {
+                "YES" | "Yes" | "yes" => {
+                    known_hosts.add(destination, key, "", key_type.into())?;
+                    known_hosts.write_file(&known_hosts_path, ssh2::KnownHostFileKind::OpenSSH)?;
+                    Ok(session)
+                }
+                _ => Err(Box::from(format!(
+                    "the authenticity of host {} cannot be established",
+                    destination
+                ))),
+            }
+        }
+        ssh2::CheckResult::Mismatch => {
+            eprintln!("####################################################");
+            eprintln!("# WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED! #");
+            eprintln!("####################################################");
+            Err(Box::from("possible person in the middle attack"))
+        }
+        ssh2::CheckResult::Failure => Err(Box::from("failed to check known hosts")),
+    }
 }
