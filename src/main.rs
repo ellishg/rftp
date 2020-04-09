@@ -11,7 +11,7 @@ mod utils;
 use events::{Event, EventListener};
 use rftp::Rftp;
 use std::error::Error;
-use std::time::Duration;
+// use std::time::Duration;
 use termion::raw::IntoRawMode;
 use termion::screen::AlternateScreen;
 use tui::backend::TermionBackend;
@@ -26,11 +26,11 @@ fn main() {
             std::process::exit(1);
         });
 
-    runtime.shutdown_timeout(Duration::from_secs(0));
+    // runtime.shutdown_timeout(Duration::from_secs(0));
 }
 
 async fn run() -> Result<(), Box<dyn Error>> {
-    let mut rftp = Rftp::new()?;
+    let mut rftp = Rftp::new().await?;
 
     let mut terminal = {
         let stdout = std::io::stdout().into_raw_mode()?;
@@ -44,7 +44,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     while rftp.is_alive() {
         match event_listener.get_next_event().await {
             Event::Input(key) => {
-                rftp.on_event(key)?;
+                rftp.on_event(key).await?;
             }
             Event::Tick => {
                 rftp.tick()?;

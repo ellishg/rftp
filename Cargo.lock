@@ -16,6 +16,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d663a8e9a99154b5fb793032533f6328da35e23aac63d5c152279aa8ba356825"
 
 [[package]]
+name = "async-ssh2"
+version = "0.1.0"
+source = "git+https://github.com/spebern/async-ssh2.git?branch=tokio-stream#9f6ce5d6ff9f898ba0f9f5ed0dbca8590a8acbbc"
+dependencies = [
+ "mio",
+ "ssh2",
+ "tokio",
+]
+
+[[package]]
 name = "atty"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -172,8 +182,7 @@ checksum = "dea0c0405123bba743ee3f91f49b1c7cfb684eef0da0a50110f758ccf24cdff0"
 [[package]]
 name = "libssh2-sys"
 version = "0.2.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7bb70f29dc7c31d32c97577f13f41221af981b31248083e347b7f2c39225a6bc"
+source = "git+https://github.com/alexcrichton/ssh2-rs#5c5bf32fe985e8a39e267ac31348764abf1e207c"
 dependencies = [
  "cc",
  "libc",
@@ -396,8 +405,8 @@ dependencies = [
 name = "rftp"
 version = "0.1.1"
 dependencies = [
+ "async-ssh2",
  "clap",
- "ssh2",
  "termion",
  "textwrap",
  "tokio",
@@ -447,8 +456,7 @@ dependencies = [
 [[package]]
 name = "ssh2"
 version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb1a0bdfb47e1fa1eb80f67c7909cfddab49d4262025aa9e4f6e9c39ad77b482"
+source = "git+https://github.com/alexcrichton/ssh2-rs#5c5bf32fe985e8a39e267ac31348764abf1e207c"
 dependencies = [
  "bitflags",
  "libc",
@@ -496,9 +504,8 @@ dependencies = [
 
 [[package]]
 name = "tokio"
-version = "0.2.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee5a0dd887e37d37390c13ff8ac830f992307fe30a1fff0ab8427af67211ba28"
+version = "0.2.11"
+source = "git+https://github.com/spebern/tokio#77a3f15be53fe6c4bbea3064ebfe13c03a700503"
 dependencies = [
  "bytes",
  "fnv",
@@ -520,9 +527,8 @@ dependencies = [
 
 [[package]]
 name = "tokio-macros"
-version = "0.2.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0c3acc6aa564495a0f2e1d59fab677cd7f81a19994cfc7f3ad0e64301560389"
+version = "0.2.4"
+source = "git+https://github.com/spebern/tokio#77a3f15be53fe6c4bbea3064ebfe13c03a700503"
 dependencies = [
  "proc-macro2",
  "quote",

@@ -1,7 +1,7 @@
 use crate::progress::Progress;
-use ssh2;
+use async_ssh2;
+use std::error::Error;
 use std::ffi::OsStr;
-use std::io::{Read, Result, Write};
 use std::path::{Path, PathBuf};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tui::{
@@ -54,20 +54,18 @@ const CHUNK_SIZE: usize = 1024 * 1024 * 8;
 pub async fn download(
     source: RemoteFileEntry,
     dest: impl AsRef<Path>,
-    sftp: &ssh2::Sftp,
+    sftp: &async_ssh2::Sftp,
     progress: &Progress,
-) -> Result<()> {
+) -> Result<(), Box<dyn Error>> {
     assert!(source.is_file(), "Source must be a file!");
-    let source = source.path();
-    let mut source = sftp.open(&source)?;
+    let source = sftp.open(&source.path()).await?;
     let dest = tokio::fs::File::create(dest).await?;
+    let mut reader = BufReader::new(source);
     let mut writer = BufWriter::new(dest);
     let mut buffer = vec![0; CHUNK_SIZE];
 
     loop {
-        // TODO: ssh2::File::read is not async.
-        //       https://github.com/alexcrichton/ssh2-rs/issues/58
-        let bytes_read = source.read(&mut buffer)?;
+        let bytes_read = reader.read(&mut buffer).await?;
         if bytes_read == 0 {
             break;
         } else {
@@ -86,14 +84,14 @@ pub async fn download(
 pub async fn upload(
     source: LocalFileEntry,
     dest: impl AsRef<Path>,
-    sftp: &ssh2::Sftp,
+    sftp: &async_ssh2::Sftp,
     progress: &Progress,
-) -> Result<()> {
+) -> Result<(), Box<dyn Error>> {
     assert!(source.is_file(), "Source must be a file!");
-    let source = source.path();
-    let source = tokio::fs::File::open(source).await?;
-    let mut dest = sftp.create(dest.as_ref())?;
+    let source = tokio::fs::File::open(source.path()).await?;
+    let dest = sftp.create(dest.as_ref()).await?;
     let mut reader = BufReader::new(source);
+    let mut writer = BufWriter::new(dest);
     let mut buffer = vec![0; CHUNK_SIZE];
 
     loop {
@@ -101,9 +99,7 @@ pub async fn upload(
         if bytes_read == 0 {
             break;
         } else {
-            // TODO: ssh2::File::write is not async.
-            //       https://github.com/alexcrichton/ssh2-rs/issues/58
-            dest.write_all(&buffer[..bytes_read])?;
+            writer.write_all(&buffer[..bytes_read]).await?;
             progress.inc(bytes_read as u64);
         }
     }
@@ -145,10 +141,10 @@ impl LocalFileEntry {
         }
     }
 
-    pub fn len(&self) -> Result<Option<u64>> {
+    pub async fn len(&self) -> std::io::Result<Option<u64>> {
         match self {
             LocalFileEntry::File(path) => {
-                let metadata = std::fs::metadata(path)?;
+                let metadata = tokio::fs::metadata(path).await?;
                 Ok(Some(metadata.len()))
             }
             LocalFileEntry::Directory(_) => Ok(None),
@@ -248,12 +244,12 @@ impl RemoteFileEntry {
 }
 
 impl FileList {
-    pub fn new(
+    pub async fn new(
         local_path: impl AsRef<Path>,
         remote_path: impl AsRef<Path>,
-        sftp: &ssh2::Sftp,
+        sftp: &async_ssh2::Sftp,
         keep_hidden_files: bool,
-    ) -> Result<Self> {
+    ) -> Result<Self, Box<dyn Error>> {
         let mut list = FileList {
             local_directory: PathBuf::new(),
             remote_directory: PathBuf::new(),
@@ -262,11 +258,12 @@ impl FileList {
             selected: SelectedFileEntryIndex::None,
         };
         list.set_local_working_path(local_path, keep_hidden_files)?;
-        list.set_remote_working_path(remote_path, sftp, keep_hidden_files)?;
+        list.set_remote_working_path(remote_path, sftp, keep_hidden_files)
+            .await?;
         Ok(list)
     }
 
-    pub fn fetch_local_files(&mut self, keep_hidden_files: bool) -> Result<()> {
+    pub fn fetch_local_files(&mut self, keep_hidden_files: bool) -> std::io::Result<()> {
         self.local_entries = vec![];
         if self.local_directory.parent().is_some() {
             let dotdot = self.local_directory.join("..");
@@ -287,7 +284,11 @@ impl FileList {
         Ok(())
     }
 
-    pub fn fetch_remote_files(&mut self, sftp: &ssh2::Sftp, keep_hidden_files: bool) -> Result<()> {
+    pub async fn fetch_remote_files(
+        &mut self,
+        sftp: &async_ssh2::Sftp,
+        keep_hidden_files: bool,
+    ) -> Result<(), async_ssh2::Error> {
         self.remote_entries = vec![];
         if self.remote_directory.parent().is_some() {
             let dotdot = self.remote_directory.join("..");
@@ -295,7 +296,8 @@ impl FileList {
         }
         self.remote_entries
             .extend(
-                sftp.readdir(&self.remote_directory)?
+                sftp.readdir(&self.remote_directory)
+                    .await?
                     .iter()
                     .map(|(path, stat)| {
                         if stat.is_file() {
@@ -316,7 +318,7 @@ impl FileList {
         &mut self,
         path: impl AsRef<Path>,
         keep_hidden_files: bool,
-    ) -> Result<()> {
+    ) -> std::io::Result<()> {
         self.local_directory = std::fs::canonicalize(path)?;
         self.fetch_local_files(keep_hidden_files)?;
         // Make sure we have a valid entry selected.
@@ -325,15 +327,15 @@ impl FileList {
         Ok(())
     }
 
-    pub fn set_remote_working_path(
+    pub async fn set_remote_working_path(
         &mut self,
         path: impl AsRef<Path>,
-        sftp: &ssh2::Sftp,
+        sftp: &async_ssh2::Sftp,
         keep_hidden_files: bool,
-    ) -> Result<()> {
+    ) -> Result<(), async_ssh2::Error> {
         // TODO: canonicalize
         self.remote_directory = path.as_ref().to_path_buf();
-        self.fetch_remote_files(sftp, keep_hidden_files)?;
+        self.fetch_remote_files(sftp, keep_hidden_files).await?;
         // Make sure we have a valid entry selected.
         self.next_selected();
         self.prev_selected();

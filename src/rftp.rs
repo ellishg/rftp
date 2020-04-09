@@ -2,22 +2,22 @@ use crate::file::*;
 use crate::progress::Progress;
 use crate::user_message::UserMessage;
 
+use async_ssh2;
 use clap;
-use ssh2;
 use std::env;
 use std::error::Error;
-use std::io::Write;
+// use std::io::Write;
 use std::iter::Iterator;
-use std::net::TcpStream;
-use std::path::Path;
+use tokio::net::TcpStream;
+// use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use termion::event::Key;
 
 pub struct Rftp {
-    session: ssh2::Session,
-    sftp: Arc<ssh2::Sftp>,
+    session: async_ssh2::Session,
+    sftp: Arc<async_ssh2::Sftp>,
     files: Arc<Mutex<FileList>>,
     is_alive: bool,
     progress_bars: Vec<Arc<Progress>>,
@@ -26,7 +26,7 @@ pub struct Rftp {
 }
 
 impl Rftp {
-    pub fn new() -> Result<Self, Box<dyn Error>> {
+    pub async fn new() -> Result<Self, Box<dyn Error>> {
         let matches = clap::clap_app!(
             rftp =>
                 (@arg destination: +required)
@@ -38,15 +38,15 @@ impl Rftp {
         let destination = matches.value_of("destination").unwrap();
         let username = matches.value_of("username").unwrap();
         let port = matches.value_of("port");
-        let session = create_session(destination, username, port)?;
-        let sftp = session.sftp()?;
+        let session = create_session(destination, username, port).await?;
+        let sftp = session.sftp().await?;
 
         let show_hidden_files = false;
 
         let files = {
             let local_path = env::current_dir()?;
             let remote_path = PathBuf::from("./");
-            let list = FileList::new(local_path, remote_path, &sftp, show_hidden_files)?;
+            let list = FileList::new(local_path, remote_path, &sftp, show_hidden_files).await?;
             Arc::new(Mutex::new(list))
         };
 
@@ -66,7 +66,7 @@ impl Rftp {
         Ok(())
     }
 
-    pub fn on_event(&mut self, key: Key) -> Result<(), Box<dyn Error>> {
+    pub async fn on_event(&mut self, key: Key) -> Result<(), Box<dyn Error>> {
         match key {
             Key::Esc => {
                 self.is_alive = false;
@@ -99,11 +99,13 @@ impl Rftp {
                     }
                     SelectedFileEntry::Remote(entry) => {
                         if entry.is_dir() {
-                            files.set_remote_working_path(
-                                entry.path(),
-                                &self.sftp,
-                                self.show_hidden_files.load(Ordering::Relaxed),
-                            )?;
+                            files
+                                .set_remote_working_path(
+                                    entry.path(),
+                                    &self.sftp,
+                                    self.show_hidden_files.load(Ordering::Relaxed),
+                                )
+                                .await?;
                         } else {
                             self.user_message.report(&format!(
                                 "Error: Cannot enter {:?} because it is not a directory!",
@@ -126,32 +128,32 @@ impl Rftp {
                             let dest = files
                                 .get_remote_working_path()
                                 .join(source.file_name().unwrap());
-                            let source_len = source.len()?.unwrap();
+                            let source_len = source.len().await?.unwrap();
                             let source_filename = source.path().to_str().unwrap().to_string();
                             let progress = Arc::new(Progress::new(&source_filename, source_len));
                             self.progress_bars.push(Arc::clone(&progress));
                             let user_message = Arc::clone(&self.user_message);
-                            let files = Arc::clone(&self.files);
-                            let show_hidden_files = Arc::clone(&self.show_hidden_files);
+                            // let files = Arc::clone(&self.files);
+                            // let show_hidden_files = Arc::clone(&self.show_hidden_files);
                             tokio::spawn(async move {
-                                upload(source, dest, &sftp, &progress)
-                                    .await
-                                    .and_then(|()| {
-                                        files.lock().unwrap().fetch_remote_files(
-                                            &sftp,
-                                            show_hidden_files.load(Ordering::Relaxed),
-                                        )
-                                    })
-                                    .and_then(|()| {
-                                        user_message.report(&format!(
-                                            "Finished uploading {}",
-                                            source_filename
-                                        ));
-                                        Ok(())
-                                    })
-                                    .unwrap_or_else(|err| {
-                                        user_message.report(&err.to_string());
-                                    });
+                                let upload = || async {
+                                    upload(source, dest, &sftp, &progress).await?;
+                                    // FIXME: Cannot lock files and then await.
+                                    // files
+                                    //     .lock()
+                                    //     .unwrap()
+                                    //     .fetch_remote_files(
+                                    //         &sftp,
+                                    //         show_hidden_files.load(Ordering::Relaxed),
+                                    //     )
+                                    //     .await?;
+                                    user_message
+                                        .report(&format!("Finished uploading {}", source_filename));
+                                    Ok(())
+                                };
+                                upload().await.unwrap_or_else(|err: Box<dyn Error>| {
+                                    user_message.report(&err.to_string());
+                                });
                             });
                         } else {
                             self.user_message.report(&format!(
@@ -174,23 +176,20 @@ impl Rftp {
                             let files = Arc::clone(&self.files);
                             let show_hidden_files = Arc::clone(&self.show_hidden_files);
                             tokio::spawn(async move {
-                                download(source, dest, &sftp, &progress)
-                                    .await
-                                    .and_then(|()| {
-                                        files.lock().unwrap().fetch_local_files(
-                                            show_hidden_files.load(Ordering::Relaxed),
-                                        )
-                                    })
-                                    .and_then(|()| {
-                                        user_message.report(&format!(
-                                            "Finished downloading {}",
-                                            source_filename
-                                        ));
-                                        Ok(())
-                                    })
-                                    .unwrap_or_else(|err| {
-                                        user_message.report(&err.to_string());
-                                    });
+                                let download = || async {
+                                    download(source, dest, &sftp, &progress).await?;
+                                    files.lock().unwrap().fetch_local_files(
+                                        show_hidden_files.load(Ordering::Relaxed),
+                                    )?;
+                                    user_message.report(&format!(
+                                        "Finished downloading {}",
+                                        source_filename
+                                    ));
+                                    Ok(())
+                                };
+                                download().await.unwrap_or_else(|err: Box<dyn Error>| {
+                                    user_message.report(&err.to_string());
+                                });
                             });
                         } else {
                             self.user_message.report(&format!(
@@ -239,44 +238,46 @@ impl Rftp {
 impl Drop for Rftp {
     fn drop(&mut self) {
         // TODO: Shutdown tcp stream.
-        self.session
-            .disconnect(Some(ssh2::DisconnectCode::ByApplication), "", None)
-            .unwrap();
+        // self.session
+        //     .disconnect(Some(async_ssh2::DisconnectCode::ByApplication), "", None)
+        //     .unwrap();
     }
 }
 
-fn create_session(
+async fn create_session(
     destination: &str,
     username: &str,
     port: Option<&str>,
-) -> Result<ssh2::Session, Box<dyn Error>> {
+) -> Result<async_ssh2::Session, Box<dyn Error>> {
     let tcp = if let Some(port) = port {
         let port = port
             .parse::<u16>()
             .map_err(|_| "unable to parse port number")?;
-        TcpStream::connect((destination, port))?
+        TcpStream::connect((destination, port)).await?
     } else {
-        TcpStream::connect(destination).unwrap_or(TcpStream::connect((destination, 22))?)
+        TcpStream::connect(destination)
+            .await
+            .unwrap_or(TcpStream::connect((destination, 22)).await?)
     };
 
-    let mut session = ssh2::Session::new()?;
+    let mut session = async_ssh2::Session::new()?;
     session.set_timeout(10000);
     session.set_compress(true);
     session.set_tcp_stream(tcp);
-    session.handshake()?;
+    session.handshake().await?;
 
-    let mut auth_methods = session.auth_methods(username)?.split(",");
+    let mut auth_methods = session.auth_methods(username).await?.split(",");
     while !session.authenticated() {
         match auth_methods.next() {
             Some("password") => {
                 // TODO: I can't get this to work yet.
                 // struct Prompter;
-                // impl ssh2::KeyboardInteractivePrompt for Prompter {
+                // impl async_ssh2::KeyboardInteractivePrompt for Prompter {
                 //     fn prompt(
                 //         &mut self,
                 //         username: &str,
                 //         instructions: &str,
-                //         prompts: &[ssh2::Prompt],
+                //         prompts: &[async_ssh2::Prompt],
                 //     ) -> Vec<String> {
                 //         println!("{}", username);
                 //         println!("{}", instructions);
@@ -287,14 +288,14 @@ fn create_session(
                 // session.userauth_keyboard_interactive(username, &mut prompter)?;
             }
             Some("publickey") => {
-                session.userauth_agent(username)?;
+                session.userauth_agent(username).await?;
             }
             Some(auth_method) => {
                 // TODO: Handle more authentication methods.
                 eprintln!("Unknown authentication method \"{}\".", auth_method);
             }
             None => {
-                session.userauth_agent(username)?;
+                session.userauth_agent(username).await?;
                 if !session.authenticated() {
                     return Err(Box::from("unable to authenticate session"));
                 }
@@ -302,39 +303,42 @@ fn create_session(
         }
     }
 
-    let mut known_hosts = session.known_hosts()?;
-    let known_hosts_path = Path::new(&env::var("HOME")?).join(".ssh/known_hosts");
-    known_hosts.read_file(&known_hosts_path, ssh2::KnownHostFileKind::OpenSSH)?;
-    let (key, key_type) = session.host_key().ok_or("unable to get host key")?;
-    match known_hosts.check(destination, key) {
-        ssh2::CheckResult::Match => Ok(session),
-        ssh2::CheckResult::NotFound => {
-            println!(
-                "The host key for {} was not found in {:?}.",
-                destination, known_hosts_path
-            );
-            print!("Would you like to add it (yes/no)? ");
-            std::io::stdout().flush()?;
-            let mut input = String::new();
-            std::io::stdin().read_line(&mut input)?;
-            match input.trim().as_ref() {
-                "YES" | "Yes" | "yes" => {
-                    known_hosts.add(destination, key, "", key_type.into())?;
-                    known_hosts.write_file(&known_hosts_path, ssh2::KnownHostFileKind::OpenSSH)?;
-                    Ok(session)
-                }
-                _ => Err(Box::from(format!(
-                    "the authenticity of host {} cannot be established",
-                    destination
-                ))),
-            }
-        }
-        ssh2::CheckResult::Mismatch => {
-            eprintln!("####################################################");
-            eprintln!("# WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED! #");
-            eprintln!("####################################################");
-            Err(Box::from("possible person in the middle attack"))
-        }
-        ssh2::CheckResult::Failure => Err(Box::from("failed to check known hosts")),
-    }
+    // FIXME: Does not compile.
+    // let mut known_hosts = session.known_hosts()?;
+    // let known_hosts_path = Path::new(&env::var("HOME")?).join(".ssh/known_hosts");
+    // known_hosts.read_file(&known_hosts_path, async_ssh2::KnownHostFileKind::OpenSSH)?;
+    // let (key, key_type) = session.host_key().ok_or("unable to get host key")?;
+    // match known_hosts.check(destination, key) {
+    //     async_ssh2::CheckResult::Match => Ok(session),
+    //     async_ssh2::CheckResult::NotFound => {
+    //         println!(
+    //             "The host key for {} was not found in {:?}.",
+    //             destination, known_hosts_path
+    //         );
+    //         print!("Would you like to add it (yes/no)? ");
+    //         std::io::stdout().flush()?;
+    //         let mut input = String::new();
+    //         std::io::stdin().read_line(&mut input)?;
+    //         match input.trim().as_ref() {
+    //             "YES" | "Yes" | "yes" => {
+    //                 known_hosts.add(destination, key, "", key_type.into())?;
+    //                 known_hosts
+    //                     .write_file(&known_hosts_path, async_ssh2::KnownHostFileKind::OpenSSH)?;
+    //                 Ok(session)
+    //             }
+    //             _ => Err(Box::from(format!(
+    //                 "the authenticity of host {} cannot be established",
+    //                 destination
+    //             ))),
+    //         }
+    //     }
+    //     async_ssh2::CheckResult::Mismatch => {
+    //         eprintln!("####################################################");
+    //         eprintln!("# WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED! #");
+    //         eprintln!("####################################################");
+    //         Err(Box::from("possible person in the middle attack"))
+    //     }
+    //     async_ssh2::CheckResult::Failure => Err(Box::from("failed to check known hosts")),
+    // }
+    Ok(session)
 }
