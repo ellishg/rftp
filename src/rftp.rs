@@ -261,7 +261,7 @@ fn create_session(
     };
 
     let mut session = ssh2::Session::new()?;
-    session.set_timeout(3000);
+    session.set_timeout(10000);
     session.set_compress(true);
     session.set_tcp_stream(tcp);
     session.handshake()?;
