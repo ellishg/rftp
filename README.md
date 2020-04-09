@@ -15,4 +15,12 @@ cargo install --path .
 rftp <destination> -u <username> -p <port>
 ```
 
-Use the arrow keys to navigate the local and remote files, the enter key to enter directories, the spacebar to download/upload the file, and 'q' to quit.
+## Controls
+
+| Key | Function |
+|:---|:--------|
+| Arrow keys<br>**h**/**j**/**k**/**l** | Navigate the files                |
+| Enter      | Enter into the selected directory |
+| Spacebar   | Download/Upload the selected file |
+| **q**      | Quit                              |
+| Escape     | Force quit                        |
