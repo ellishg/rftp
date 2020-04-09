@@ -233,8 +233,7 @@ impl Rftp {
         let progress_bars = self.progress_bars.iter().map(|p| p.as_ref()).collect();
         let rect = Progress::draw_progress_bars(progress_bars, &mut frame, rect);
 
-        let files = { self.files.lock().unwrap().clone() };
-        files.draw(&mut frame, rect);
+        self.files.lock().unwrap().draw(&mut frame, rect);
     }
 }
 

@@ -447,7 +447,7 @@ impl FileList {
         self.apply_op_to_selected(|i| i);
     }
 
-    pub fn draw<B>(self, frame: &mut tui::terminal::Frame<B>, rect: tui::layout::Rect)
+    pub fn draw<B>(&self, frame: &mut tui::terminal::Frame<B>, rect: tui::layout::Rect)
     where
         B: tui::backend::Backend,
     {
