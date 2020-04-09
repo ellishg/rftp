@@ -230,6 +230,7 @@ fn bitrate_to_string(rate: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::buffer_without_style;
     use tui::{backend::TestBackend, buffer::Buffer, Terminal};
 
     #[test]
@@ -254,17 +255,6 @@ mod tests {
         assert_eq!(bitrate_to_string(1e3 as u64), "1.0 Kbit/s".to_string());
         assert_eq!(bitrate_to_string(3e6 as u64), "3.0 Mbit/s".to_string());
         assert_eq!(bitrate_to_string(7e9 as u64), "7.0 Gbit/s".to_string());
-    }
-
-    fn buffer_without_style(buffer: &Buffer) -> Buffer {
-        let mut buffer = buffer.clone();
-        let rect = buffer.area().clone();
-        for x in rect.x..rect.width {
-            for y in rect.y..rect.height {
-                buffer.get_mut(x, y).set_style(Style::default());
-            }
-        }
-        buffer
     }
 
     #[test]

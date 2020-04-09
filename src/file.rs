@@ -4,15 +4,20 @@ use std::ffi::OsStr;
 use std::io::{Read, Result, Write};
 use std::path::{Path, PathBuf};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
+use tui::{
+    layout::{Constraint, Direction, Layout},
+    style::{Color, Style},
+    widgets::{Block, Borders, SelectableList, Widget},
+};
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Ord)]
 pub enum LocalFileEntry {
     File(PathBuf),
     Directory(PathBuf),
     Parent(PathBuf),
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Ord)]
 pub enum RemoteFileEntry {
     File(PathBuf, u64),
     Directory(PathBuf),
@@ -25,12 +30,14 @@ pub enum SelectedFileEntry {
     None,
 }
 
+#[derive(Clone)]
 enum SelectedFileEntryIndex {
     Local(usize),
     Remote(usize),
     None,
 }
 
+#[derive(Clone)]
 pub struct FileList {
     local_directory: PathBuf,
     remote_directory: PathBuf,
@@ -168,7 +175,7 @@ impl LocalFileEntry {
                 let filename = path.file_name().unwrap().to_str().unwrap();
                 format!("{}/", filename)
             }
-            LocalFileEntry::Parent(_) => "⬅️".to_string(),
+            LocalFileEntry::Parent(_) => "\u{2b05}".to_string(),
         }
     }
 }
@@ -234,7 +241,7 @@ impl RemoteFileEntry {
                 let filename = path.file_name().unwrap().to_str().unwrap();
                 format!("{}/", filename)
             }
-            RemoteFileEntry::Parent(_) => "⬅️".to_string(),
+            RemoteFileEntry::Parent(_) => "\u{2b05}".to_string(),
         }
     }
 }
@@ -259,7 +266,6 @@ impl FileList {
     }
 
     pub fn fetch_local_files(&mut self, keep_hidden_files: bool) -> Result<()> {
-        // TODO: Sort files.
         self.local_entries = vec![];
         if self.local_directory.parent().is_some() {
             let dotdot = {
@@ -280,11 +286,11 @@ impl FileList {
         if !keep_hidden_files {
             self.local_entries.retain(|entry| !entry.is_hidden());
         }
+        self.local_entries.sort_unstable();
         Ok(())
     }
 
     pub fn fetch_remote_files(&mut self, sftp: &ssh2::Sftp, keep_hidden_files: bool) -> Result<()> {
-        // TODO: Sort files.
         self.remote_entries = vec![];
         if self.remote_directory.parent().is_some() {
             let dotdot = {
@@ -309,6 +315,7 @@ impl FileList {
         if !keep_hidden_files {
             self.remote_entries.retain(|entry| !entry.is_hidden());
         }
+        self.remote_entries.sort_unstable();
         Ok(())
     }
 
@@ -319,6 +326,9 @@ impl FileList {
     ) -> Result<()> {
         self.local_directory = std::fs::canonicalize(path)?;
         self.fetch_local_files(keep_hidden_files)?;
+        // Make sure we have a valid entry selected.
+        self.next_selected();
+        self.prev_selected();
         Ok(())
     }
 
@@ -331,6 +341,9 @@ impl FileList {
         // TODO: canonicalize
         self.remote_directory = path.as_ref().to_path_buf();
         self.fetch_remote_files(sftp, keep_hidden_files)?;
+        // Make sure we have a valid entry selected.
+        self.next_selected();
+        self.prev_selected();
         Ok(())
     }
 
@@ -340,10 +353,6 @@ impl FileList {
 
     pub fn get_remote_working_path(&self) -> &Path {
         &self.remote_directory
-    }
-
-    pub fn get_file_entries(&self) -> (&Vec<LocalFileEntry>, &Vec<RemoteFileEntry>) {
-        (&self.local_entries, &self.remote_entries)
     }
 
     pub fn get_selected_entry(&self) -> SelectedFileEntry {
@@ -436,5 +445,110 @@ impl FileList {
             }
         };
         self.apply_op_to_selected(|i| i);
+    }
+
+    pub fn draw<B>(self, frame: &mut tui::terminal::Frame<B>, rect: tui::layout::Rect)
+    where
+        B: tui::backend::Backend,
+    {
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)].as_ref())
+            .split(rect);
+        let (local_rect, remote_rect) = (chunks[0], chunks[1]);
+
+        let mut render = |title, items: Vec<String>, selected, rect| {
+            // TODO: Would like to style items by file type.
+            //       https://github.com/fdehau/tui-rs/issues/254
+            SelectableList::default()
+                .block(Block::default().title(title).borders(Borders::ALL))
+                .items(items.as_slice())
+                .select(selected)
+                .highlight_style(Style::default().bg(Color::Yellow))
+                .highlight_symbol(">>")
+                .render(frame, rect);
+        };
+
+        let title = format!("Local: {:?}", self.get_local_working_path());
+        let items = self
+            .local_entries
+            .iter()
+            .map(|entry| entry.to_text())
+            .collect();
+        let selected = self.get_local_selected_index();
+        render(&title, items, selected, local_rect);
+
+        let title = format!("Remote: {:?}", self.get_remote_working_path());
+        let items = self
+            .remote_entries
+            .iter()
+            .map(|entry| entry.to_text())
+            .collect();
+        let selected = self.get_remote_selected_index();
+        render(&title, items, selected, remote_rect);
+    }
+}
+
+impl PartialOrd for LocalFileEntry {
+    fn partial_cmp(&self, other: &LocalFileEntry) -> Option<std::cmp::Ordering> {
+        self.path().partial_cmp(other.path())
+    }
+}
+
+impl PartialOrd for RemoteFileEntry {
+    fn partial_cmp(&self, other: &RemoteFileEntry) -> Option<std::cmp::Ordering> {
+        self.path().partial_cmp(other.path())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::buffer_without_style;
+    use tui::{backend::TestBackend, buffer::Buffer, Terminal};
+
+    #[test]
+    fn test_file_list() {
+        let file_list: FileList = FileList {
+            local_directory: PathBuf::from("/a/b/c"),
+            remote_directory: PathBuf::from("home/files"),
+            local_entries: vec![
+                LocalFileEntry::Parent(PathBuf::from("/a/b/c/..")),
+                LocalFileEntry::File(PathBuf::from("/a/b/c/myfile.txt")),
+                LocalFileEntry::File(PathBuf::from("/a/b/c/myotherfile.dat")),
+                LocalFileEntry::Directory(PathBuf::from("/a/b/c/important")),
+            ],
+            remote_entries: vec![
+                RemoteFileEntry::Parent(PathBuf::from("home/files/..")),
+                RemoteFileEntry::File(PathBuf::from("home/files/pic.png"), 128),
+                RemoteFileEntry::File(PathBuf::from("home/files/movie.mkv"), 512),
+                RemoteFileEntry::Directory(PathBuf::from("home/files/games")),
+                RemoteFileEntry::Directory(PathBuf::from("home/files/trash")),
+            ],
+            selected: SelectedFileEntryIndex::Remote(2),
+        };
+
+        let mut terminal = Terminal::new(TestBackend::new(50, 8)).unwrap();
+
+        terminal
+            .draw(|mut frame| {
+                let rect = frame.size();
+                file_list.draw(&mut frame, rect);
+            })
+            .unwrap();
+
+        assert_eq!(
+            buffer_without_style(terminal.backend().buffer()),
+            Buffer::with_lines(vec![
+                "┌Local: \"/a/b/c\"────────┐┌Remote: \"home/files\"───┐",
+                "│\u{2b05}                      ││   \u{2b05}                   │",
+                "│myfile.txt             ││   pic.png             │",
+                "│myotherfile.dat        ││>> movie.mkv           │",
+                "│important/             ││   games/              │",
+                "│                       ││   trash/              │",
+                "│                       ││                       │",
+                "└───────────────────────┘└───────────────────────┘",
+            ])
+        );
     }
 }

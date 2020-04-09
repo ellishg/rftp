@@ -228,26 +228,12 @@ impl Rftp {
         self.is_alive
     }
 
-    // TODO: Return Text instead of String.
-    pub fn get_local_filelist_as_text(&self) -> (String, Vec<String>, Option<usize>) {
-        let files = self.files.lock().unwrap();
-        let path = format!("{}", files.get_local_working_path().display());
-        let (entries, _) = files.get_file_entries();
-        let entries = entries.iter().map(|entry| entry.to_text()).collect();
-        (path, entries, files.get_local_selected_index())
-    }
-
-    // TODO: Return Text instead of String.
-    pub fn get_remote_filelist_as_text(&self) -> (String, Vec<String>, Option<usize>) {
-        let files = self.files.lock().unwrap();
-        let path = format!("{}", files.get_remote_working_path().display());
-        let (_, entries) = files.get_file_entries();
-        let entries = entries.iter().map(|entry| entry.to_text()).collect();
-        (path, entries, files.get_remote_selected_index())
-    }
-
     pub fn get_user_message(&self) -> Option<String> {
         self.user_message.lock().unwrap().clone()
+    }
+
+    pub fn get_file_list(&self) -> FileList {
+        self.files.lock().unwrap().clone()
     }
 }
 

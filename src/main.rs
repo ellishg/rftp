@@ -6,6 +6,7 @@ mod file;
 mod progress;
 mod rftp;
 mod user_interface;
+mod utils;
 
 use events::{Event, EventListener};
 use rftp::Rftp;
