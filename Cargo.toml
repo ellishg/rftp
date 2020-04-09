@@ -16,3 +16,4 @@ clap = "2.33.0"
 tokio = { version = "0.2", features = ["full"] }
 tui = "0.8.0"
 termion = "1.5.5"
+textwrap = "0.11.0"

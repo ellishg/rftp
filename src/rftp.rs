@@ -1,5 +1,6 @@
 use crate::file::*;
 use crate::progress::Progress;
+use crate::user_message::UserMessage;
 
 use clap;
 use ssh2;
@@ -19,7 +20,7 @@ pub struct Rftp {
     is_alive: bool,
     progress_bars: Vec<Arc<Progress>>,
     show_hidden_files: Arc<AtomicBool>,
-    user_message: Arc<Mutex<Option<String>>>,
+    user_message: Arc<UserMessage>,
 }
 
 impl Rftp {
@@ -54,7 +55,7 @@ impl Rftp {
             is_alive: true,
             progress_bars: vec![],
             show_hidden_files: Arc::new(AtomicBool::new(show_hidden_files)),
-            user_message: Arc::new(Mutex::new(None)),
+            user_message: Arc::new(UserMessage::new()),
         })
     }
 
@@ -72,10 +73,10 @@ impl Rftp {
                 if self.progress_bars.is_empty() {
                     self.is_alive = false;
                 } else {
-                    self.warn_user(String::from(
+                    self.user_message.report(
                         "There are still downloads/uploads in progress. \
                          Press the Escape key to force quit.",
-                    ));
+                    );
                 }
             }
             Key::Char('\n') => {
@@ -88,7 +89,7 @@ impl Rftp {
                                 self.show_hidden_files.load(Ordering::Relaxed),
                             )?;
                         } else {
-                            self.warn_user(format!(
+                            self.user_message.report(&format!(
                                 "Error: Cannot enter {:?} because it is not a directory!",
                                 entry.path()
                             ));
@@ -102,14 +103,14 @@ impl Rftp {
                                 self.show_hidden_files.load(Ordering::Relaxed),
                             )?;
                         } else {
-                            self.warn_user(format!(
+                            self.user_message.report(&format!(
                                 "Error: Cannot enter {:?} because it is not a directory!",
                                 entry.path()
                             ));
                         }
                     }
                     SelectedFileEntry::None => {
-                        self.warn_user(format!("No directory selected."));
+                        self.user_message.report("No directory selected.");
                     }
                 }
             }
@@ -141,16 +142,18 @@ impl Rftp {
                                         )
                                     })
                                     .and_then(|()| {
-                                        *user_message.lock().unwrap() =
-                                            Some(format!("Finished uploading {}", source_filename));
+                                        user_message.report(&format!(
+                                            "Finished uploading {}",
+                                            source_filename
+                                        ));
                                         Ok(())
                                     })
                                     .unwrap_or_else(|err| {
-                                        *user_message.lock().unwrap() = Some(err.to_string());
+                                        user_message.report(&err.to_string());
                                     });
                             });
                         } else {
-                            self.warn_user(format!(
+                            self.user_message.report(&format!(
                                 "Error: Cannot upload {:?} because it is a directory",
                                 source.path()
                             ));
@@ -180,25 +183,25 @@ impl Rftp {
                                         )
                                     })
                                     .and_then(|()| {
-                                        *user_message.lock().unwrap() = Some(format!(
+                                        user_message.report(&format!(
                                             "Finished downloading {}",
                                             source_filename
                                         ));
                                         Ok(())
                                     })
                                     .unwrap_or_else(|err| {
-                                        *user_message.lock().unwrap() = Some(err.to_string());
+                                        user_message.report(&err.to_string());
                                     });
                             });
                         } else {
-                            self.warn_user(format!(
+                            self.user_message.report(&format!(
                                 "Error: Cannot download {:?} because it is a directory",
                                 source.path()
                             ));
                         }
                     }
                     SelectedFileEntry::None => {
-                        self.warn_user(format!("No file selected."));
+                        self.user_message.report("No file selected.");
                     }
                 }
             }
@@ -216,24 +219,22 @@ impl Rftp {
         Ok(())
     }
 
-    fn warn_user(&self, message: String) {
-        *self.user_message.lock().unwrap() = Some(message)
-    }
-
-    pub fn get_progress_bars(&self) -> Vec<&Progress> {
-        self.progress_bars.iter().map(|p| p.as_ref()).collect()
-    }
-
     pub fn is_alive(&self) -> bool {
         self.is_alive
     }
 
-    pub fn get_user_message(&self) -> Option<String> {
-        self.user_message.lock().unwrap().clone()
-    }
+    pub fn draw<B>(&self, mut frame: tui::terminal::Frame<B>)
+    where
+        B: tui::backend::Backend,
+    {
+        let rect = frame.size();
+        let rect = self.user_message.draw(&mut frame, rect);
 
-    pub fn get_file_list(&self) -> FileList {
-        self.files.lock().unwrap().clone()
+        let progress_bars = self.progress_bars.iter().map(|p| p.as_ref()).collect();
+        let rect = Progress::draw_progress_bars(progress_bars, &mut frame, rect);
+
+        let files = { self.files.lock().unwrap().clone() };
+        files.draw(&mut frame, rect);
     }
 }
 

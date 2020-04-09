@@ -5,7 +5,7 @@ mod events;
 mod file;
 mod progress;
 mod rftp;
-mod user_interface;
+mod user_message;
 mod utils;
 
 use events::{Event, EventListener};
@@ -48,7 +48,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
             }
             Event::Tick => {
                 rftp.tick()?;
-                terminal.draw(|frame| user_interface::draw(frame, &rftp))?;
+                terminal.draw(|frame| rftp.draw(frame))?;
             }
         }
     }

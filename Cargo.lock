@@ -399,6 +399,7 @@ dependencies = [
  "clap",
  "ssh2",
  "termion",
+ "textwrap",
  "tokio",
  "tui",
 ]
