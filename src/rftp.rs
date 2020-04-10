@@ -3,13 +3,12 @@ use crate::progress::Progress;
 use crate::user_message::UserMessage;
 
 use clap;
+use dirs;
 use ssh2;
-use std::env;
 use std::error::Error;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::iter::Iterator;
 use std::net::TcpStream;
-use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use termion::event::Key;
@@ -42,12 +41,11 @@ impl Rftp {
 
         let show_hidden_files = false;
 
-        let files = {
-            let local_path = env::current_dir()?;
-            let remote_path = get_remote_home_dir(&session)?;
-            let list = FileList::new(local_path, remote_path, &sftp, show_hidden_files)?;
-            Arc::new(Mutex::new(list))
-        };
+        let files = Arc::new(Mutex::new(FileList::new(
+            &session,
+            &sftp,
+            show_hidden_files,
+        )?));
 
         Ok(Rftp {
             session,
@@ -244,24 +242,6 @@ impl Drop for Rftp {
     }
 }
 
-fn get_remote_home_dir(session: &ssh2::Session) -> Result<PathBuf, Box<dyn Error>> {
-    let mut channel = session.channel_session()?;
-    channel.exec("pwd")?;
-    let mut result = String::new();
-    channel.read_to_string(&mut result)?;
-    let result = result.trim();
-    channel.wait_close()?;
-    let exit_status = channel.exit_status()?;
-    if exit_status == 0 {
-        Ok(PathBuf::from(result))
-    } else {
-        Err(Box::from(format!(
-            "channel closed with exit status {}",
-            exit_status
-        )))
-    }
-}
-
 fn create_session(
     destination: &str,
     username: &str,
@@ -320,7 +300,9 @@ fn create_session(
     }
 
     let mut known_hosts = session.known_hosts()?;
-    let known_hosts_path = Path::new(&env::var("HOME")?).join(".ssh/known_hosts");
+    let known_hosts_path = dirs::home_dir()
+        .ok_or("unable to find home directory")?
+        .join(".ssh/known_hosts");
     known_hosts.read_file(&known_hosts_path, ssh2::KnownHostFileKind::OpenSSH)?;
     let (key, key_type) = session.host_key().ok_or("unable to get host key")?;
     match known_hosts.check(destination, key) {

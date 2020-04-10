@@ -1,7 +1,10 @@
 use crate::progress::Progress;
 use ssh2;
+use std::env;
+use std::error::Error;
 use std::ffi::OsStr;
-use std::io::{Read, Result, Write};
+use std::io;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tui::{
@@ -56,7 +59,7 @@ pub async fn download(
     dest: impl AsRef<Path>,
     sftp: &ssh2::Sftp,
     progress: &Progress,
-) -> Result<()> {
+) -> io::Result<()> {
     assert!(source.is_file(), "Source must be a file!");
     let source = source.path();
     let mut source = sftp.open(&source)?;
@@ -88,7 +91,7 @@ pub async fn upload(
     dest: impl AsRef<Path>,
     sftp: &ssh2::Sftp,
     progress: &Progress,
-) -> Result<()> {
+) -> io::Result<()> {
     assert!(source.is_file(), "Source must be a file!");
     let source = source.path();
     let source = tokio::fs::File::open(source).await?;
@@ -145,7 +148,7 @@ impl LocalFileEntry {
         }
     }
 
-    pub fn len(&self) -> Result<Option<u64>> {
+    pub fn len(&self) -> io::Result<Option<u64>> {
         match self {
             LocalFileEntry::File(path) => {
                 let metadata = std::fs::metadata(path)?;
@@ -249,11 +252,13 @@ impl RemoteFileEntry {
 
 impl FileList {
     pub fn new(
-        local_path: impl AsRef<Path>,
-        remote_path: impl AsRef<Path>,
+        session: &ssh2::Session,
         sftp: &ssh2::Sftp,
         keep_hidden_files: bool,
-    ) -> Result<Self> {
+    ) -> Result<Self, Box<dyn Error>> {
+        let local_path = env::current_dir()?;
+        let remote_path = get_remote_home_dir(session).unwrap_or(PathBuf::from("./"));
+
         let mut list = FileList {
             local_directory: PathBuf::new(),
             remote_directory: PathBuf::new(),
@@ -266,7 +271,7 @@ impl FileList {
         Ok(list)
     }
 
-    pub fn fetch_local_files(&mut self, keep_hidden_files: bool) -> Result<()> {
+    pub fn fetch_local_files(&mut self, keep_hidden_files: bool) -> io::Result<()> {
         self.local_entries = vec![];
         if self.local_directory.parent().is_some() {
             let dotdot = self.local_directory.join("..");
@@ -287,7 +292,11 @@ impl FileList {
         Ok(())
     }
 
-    pub fn fetch_remote_files(&mut self, sftp: &ssh2::Sftp, keep_hidden_files: bool) -> Result<()> {
+    pub fn fetch_remote_files(
+        &mut self,
+        sftp: &ssh2::Sftp,
+        keep_hidden_files: bool,
+    ) -> io::Result<()> {
         self.remote_entries = vec![];
         if self.remote_directory.parent().is_some() {
             let dotdot = self.remote_directory.join("..");
@@ -316,7 +325,7 @@ impl FileList {
         &mut self,
         path: impl AsRef<Path>,
         keep_hidden_files: bool,
-    ) -> Result<()> {
+    ) -> io::Result<()> {
         self.local_directory = std::fs::canonicalize(path)?;
         self.fetch_local_files(keep_hidden_files)?;
         // Make sure we have a valid entry selected.
@@ -330,7 +339,7 @@ impl FileList {
         path: impl AsRef<Path>,
         sftp: &ssh2::Sftp,
         keep_hidden_files: bool,
-    ) -> Result<()> {
+    ) -> io::Result<()> {
         // TODO: canonicalize
         self.remote_directory = path.as_ref().to_path_buf();
         self.fetch_remote_files(sftp, keep_hidden_files)?;
@@ -479,6 +488,24 @@ impl FileList {
             .collect();
         let selected = self.get_remote_selected_index();
         render(&title, items, selected, remote_rect);
+    }
+}
+
+fn get_remote_home_dir(session: &ssh2::Session) -> Result<PathBuf, Box<dyn Error>> {
+    let mut channel = session.channel_session()?;
+    channel.exec("pwd")?;
+    let mut result = String::new();
+    channel.read_to_string(&mut result)?;
+    let result = result.trim();
+    channel.wait_close()?;
+    let exit_status = channel.exit_status()?;
+    if exit_status == 0 {
+        Ok(PathBuf::from(result))
+    } else {
+        Err(Box::from(format!(
+            "channel closed with exit status {}",
+            exit_status
+        )))
     }
 }
 
