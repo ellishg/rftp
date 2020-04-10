@@ -24,14 +24,17 @@ impl UserMessage {
     pub fn report(&self, message: &str) {
         let now = Instant::now();
         let message = message.to_string();
-        self.messages.lock().unwrap().push_back((now, message));
+        let mut messages = self.messages.lock().unwrap();
+        messages.push_back((now, message));
+        if messages.len() >= NUM_MAX_MESSAGES as usize {
+            messages.pop_front();
+        }
     }
 
     fn get_lines(&self, max_age: Duration, max_width: u16) -> Vec<String> {
         let now = Instant::now();
         let messages = {
             let mut messages = self.messages.lock().unwrap();
-            messages.truncate(NUM_MAX_MESSAGES as usize);
             if let Some(oldest_allowed) = now.checked_sub(max_age) {
                 loop {
                     if let Some((t, _)) = messages.front() {
@@ -99,9 +102,11 @@ mod tests {
         let mut terminal = Terminal::new(TestBackend::new(50, 5)).unwrap();
 
         let message = UserMessage::new();
+        message.report("This message will not be shown.");
         message.report("This is one message.");
         message.report("And here is a second.");
         message.report("This one is far too large to fit on one single line.");
+        message.report("Another short message.");
 
         terminal
             .draw(|mut frame| {
@@ -113,11 +118,11 @@ mod tests {
         assert_eq!(
             *terminal.backend().buffer(),
             Buffer::with_lines(vec![
-                "                                                  ",
                 "This is one message.                              ",
                 "And here is a second.                             ",
                 "This one is far too large to fit on one single    ",
                 "line.                                             ",
+                "Another short message.                            ",
             ])
         );
     }
