@@ -128,6 +128,7 @@ impl Rftp {
                             drop(files);
                             self.spawn_upload(source, dest);
                         } else {
+                            drop(files);
                             self.user_message.report(&format!(
                                 "Error: Cannot upload \"{}\" because it is a directory!",
                                 source.file_name_lossy().unwrap()
@@ -142,6 +143,7 @@ impl Rftp {
                             drop(files);
                             self.spawn_download(source, dest);
                         } else {
+                            drop(files);
                             self.user_message.report(&format!(
                                 "Error: Cannot download \"{}\" because it is a directory!",
                                 source.file_name_lossy().unwrap()
@@ -149,6 +151,7 @@ impl Rftp {
                         }
                     }
                     SelectedFileEntry::None => {
+                        drop(files);
                         self.user_message.report("No file selected.");
                     }
                 }
