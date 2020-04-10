@@ -117,7 +117,7 @@ impl LocalFileEntry {
         match self {
             LocalFileEntry::File(path) => path,
             LocalFileEntry::Directory(path) => path,
-            LocalFileEntry::Parent(path) => path,
+            LocalFileEntry::Parent(path) => path.parent().unwrap().parent().unwrap(),
         }
     }
 
@@ -186,7 +186,7 @@ impl RemoteFileEntry {
         match self {
             RemoteFileEntry::File(path, _) => path,
             RemoteFileEntry::Directory(path) => path,
-            RemoteFileEntry::Parent(path) => path,
+            RemoteFileEntry::Parent(path) => path.parent().unwrap().parent().unwrap(),
         }
     }
 
