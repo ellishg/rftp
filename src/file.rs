@@ -2,7 +2,6 @@ use crate::progress::Progress;
 use ssh2;
 use std::env;
 use std::error::Error;
-use std::ffi::OsStr;
 use std::io;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -115,24 +114,50 @@ pub async fn upload(
     Ok(())
 }
 
-impl LocalFileEntry {
-    pub fn path(&self) -> &Path {
+pub trait FileEntry {
+    fn path(&self) -> &Path;
+    fn is_dir(&self) -> bool;
+    fn is_file(&self) -> bool;
+    fn is_parent(&self) -> bool;
+    fn len(&self) -> Option<u64>;
+
+    fn is_hidden(&self) -> bool {
+        if self.is_parent() {
+            false
+        } else {
+            // A file is hidden if its name begins with a '.'
+            let filename = self.path().file_name().unwrap();
+            filename.to_str().unwrap().chars().next() == Some('.')
+        }
+    }
+
+    // TODO: Return Text
+    fn to_text(&self) -> String {
+        if self.is_parent() {
+            "\u{2b05}".to_string()
+        } else {
+            let filename = self.path().file_name().unwrap().to_string_lossy();
+            if self.is_file() {
+                filename.to_string()
+            } else if self.is_dir() {
+                format!("{}/", filename)
+            } else {
+                unreachable!()
+            }
+        }
+    }
+}
+
+impl FileEntry for LocalFileEntry {
+    fn path(&self) -> &Path {
         match self {
             LocalFileEntry::File(path) => path,
             LocalFileEntry::Directory(path) => path,
-            LocalFileEntry::Parent(path) => path.parent().unwrap().parent().unwrap(),
+            LocalFileEntry::Parent(path) => path,
         }
     }
 
-    pub fn file_name(&self) -> Option<&OsStr> {
-        match self {
-            LocalFileEntry::File(path) => path.file_name(),
-            LocalFileEntry::Directory(_) => None,
-            LocalFileEntry::Parent(_) => None,
-        }
-    }
-
-    pub fn is_dir(&self) -> bool {
+    fn is_dir(&self) -> bool {
         match self {
             LocalFileEntry::File(_) => false,
             LocalFileEntry::Directory(_) => true,
@@ -140,7 +165,7 @@ impl LocalFileEntry {
         }
     }
 
-    pub fn is_file(&self) -> bool {
+    fn is_file(&self) -> bool {
         match self {
             LocalFileEntry::File(_) => true,
             LocalFileEntry::Directory(_) => false,
@@ -148,60 +173,37 @@ impl LocalFileEntry {
         }
     }
 
-    pub fn len(&self) -> io::Result<Option<u64>> {
+    fn is_parent(&self) -> bool {
         match self {
-            LocalFileEntry::File(path) => {
-                let metadata = std::fs::metadata(path)?;
-                Ok(Some(metadata.len()))
-            }
-            LocalFileEntry::Directory(_) => Ok(None),
-            LocalFileEntry::Parent(_) => Ok(None),
+            LocalFileEntry::File(_) => false,
+            LocalFileEntry::Directory(_) => false,
+            LocalFileEntry::Parent(_) => true,
         }
     }
 
-    pub fn is_hidden(&self) -> bool {
-        if let LocalFileEntry::Parent(_) = self {
-            false
-        } else {
-            let filename = self.path().file_name().unwrap();
-            filename.to_str().unwrap().chars().next() == Some('.')
-        }
-    }
-
-    // TODO: Return Text.
-    pub fn to_text(&self) -> String {
+    fn len(&self) -> Option<u64> {
         match self {
             LocalFileEntry::File(path) => {
-                let filename = path.file_name().unwrap().to_str().unwrap();
-                format!("{}", filename)
+                std::fs::metadata(path).ok().map(|metadata| metadata.len())
+                // let metadata = std::fs::metadata(path)?;
+                // Ok(Some(metadata.len()))
             }
-            LocalFileEntry::Directory(path) => {
-                let filename = path.file_name().unwrap().to_str().unwrap();
-                format!("{}/", filename)
-            }
-            LocalFileEntry::Parent(_) => "\u{2b05}".to_string(),
+            LocalFileEntry::Directory(_) => None,
+            LocalFileEntry::Parent(_) => None,
         }
     }
 }
 
-impl RemoteFileEntry {
-    pub fn path(&self) -> &Path {
+impl FileEntry for RemoteFileEntry {
+    fn path(&self) -> &Path {
         match self {
             RemoteFileEntry::File(path, _) => path,
             RemoteFileEntry::Directory(path) => path,
-            RemoteFileEntry::Parent(path) => path.parent().unwrap().parent().unwrap(),
+            RemoteFileEntry::Parent(path) => path,
         }
     }
 
-    pub fn file_name(&self) -> Option<&OsStr> {
-        match self {
-            RemoteFileEntry::File(path, _) => path.file_name(),
-            RemoteFileEntry::Directory(_) => None,
-            RemoteFileEntry::Parent(_) => None,
-        }
-    }
-
-    pub fn is_dir(&self) -> bool {
+    fn is_dir(&self) -> bool {
         match self {
             RemoteFileEntry::File(_, _) => false,
             RemoteFileEntry::Directory(_) => true,
@@ -209,7 +211,7 @@ impl RemoteFileEntry {
         }
     }
 
-    pub fn is_file(&self) -> bool {
+    fn is_file(&self) -> bool {
         match self {
             RemoteFileEntry::File(_, _) => true,
             RemoteFileEntry::Directory(_) => false,
@@ -217,35 +219,19 @@ impl RemoteFileEntry {
         }
     }
 
-    pub fn len(&self) -> Option<u64> {
+    fn is_parent(&self) -> bool {
+        match self {
+            RemoteFileEntry::File(_, _) => false,
+            RemoteFileEntry::Directory(_) => false,
+            RemoteFileEntry::Parent(_) => true,
+        }
+    }
+
+    fn len(&self) -> Option<u64> {
         match self {
             RemoteFileEntry::File(_, len) => Some(*len),
             RemoteFileEntry::Directory(_) => None,
             RemoteFileEntry::Parent(_) => None,
-        }
-    }
-
-    pub fn is_hidden(&self) -> bool {
-        if let RemoteFileEntry::Parent(_) = self {
-            false
-        } else {
-            let filename = self.path().file_name().unwrap();
-            filename.to_str().unwrap().chars().next() == Some('.')
-        }
-    }
-
-    // TODO: Return Text.
-    pub fn to_text(&self) -> String {
-        match self {
-            RemoteFileEntry::File(path, _) => {
-                let filename = path.file_name().unwrap().to_str().unwrap();
-                format!("{}", filename)
-            }
-            RemoteFileEntry::Directory(path) => {
-                let filename = path.file_name().unwrap().to_str().unwrap();
-                format!("{}/", filename)
-            }
-            RemoteFileEntry::Parent(_) => "\u{2b05}".to_string(),
         }
     }
 }
@@ -273,9 +259,9 @@ impl FileList {
 
     pub fn fetch_local_files(&mut self, keep_hidden_files: bool) -> io::Result<()> {
         self.local_entries = vec![];
-        if self.local_directory.parent().is_some() {
-            let dotdot = self.local_directory.join("..");
-            self.local_entries.push(LocalFileEntry::Parent(dotdot));
+        if let Some(parent) = self.local_directory.parent() {
+            self.local_entries
+                .push(LocalFileEntry::Parent(parent.to_path_buf()));
         }
         for entry in std::fs::read_dir(&self.local_directory)? {
             let path = entry?.path();
@@ -298,9 +284,9 @@ impl FileList {
         keep_hidden_files: bool,
     ) -> io::Result<()> {
         self.remote_entries = vec![];
-        if self.remote_directory.parent().is_some() {
-            let dotdot = self.remote_directory.join("..");
-            self.remote_entries.push(RemoteFileEntry::Parent(dotdot));
+        if let Some(parent) = self.remote_directory.parent() {
+            self.remote_entries
+                .push(RemoteFileEntry::Parent(parent.to_path_buf()));
         }
         self.remote_entries
             .extend(

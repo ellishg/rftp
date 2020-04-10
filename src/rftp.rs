@@ -122,8 +122,8 @@ impl Rftp {
                             let sftp = Arc::clone(&self.sftp);
                             let dest = files
                                 .get_remote_working_path()
-                                .join(source.file_name().unwrap());
-                            let source_len = source.len()?.unwrap();
+                                .join(source.path().file_name().unwrap());
+                            let source_len = source.len().unwrap();
                             let source_filename = source.path().to_str().unwrap().to_string();
                             let progress = Arc::new(Progress::new(&source_filename, source_len));
                             self.progress_bars.push(Arc::clone(&progress));
@@ -162,7 +162,7 @@ impl Rftp {
                             let sftp = Arc::clone(&self.sftp);
                             let dest = files
                                 .get_local_working_path()
-                                .join(source.file_name().unwrap());
+                                .join(source.path().file_name().unwrap());
                             let source_len = source.len().unwrap();
                             let source_filename = source.path().to_str().unwrap().to_string();
                             let progress = Arc::new(Progress::new(&source_filename, source_len));
