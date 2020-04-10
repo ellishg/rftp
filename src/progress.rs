@@ -265,7 +265,7 @@ mod tests {
             .draw(|mut frame| {
                 let rect = frame.size();
                 let just_started = Progress::new("just_started.txt", 100);
-                let long = Progress::new("/this/is/a/really/long/filename.txt", 100);
+                let long = Progress::new("this_is_a_really_long_filename.txt", 100);
                 let finished = Progress::new("finished.jpg", 100);
                 finished.inc(50);
                 finished.finish();
@@ -305,7 +305,7 @@ mod tests {
                 "                                                  ",
                 "                                                  ",
                 "just_started.txt                 0 bit/s ??:?? ETA",
-                "/this/is/a/really/long/filename. 0 bit/s ??:?? ETA",
+                "this_is_a_really_long_filename.t 0 bit/s ??:?? ETA",
                 "with_history.dat            131.1 Kbit/s 01:01 ETA",
                 "finished.jpg                     0 bit/s 00:00 ETA",
             ])

@@ -1,5 +1,6 @@
 use crate::progress::Progress;
 use ssh2;
+use std::borrow::Cow;
 use std::env;
 use std::error::Error;
 use std::io;
@@ -121,6 +122,12 @@ pub trait FileEntry {
     fn is_parent(&self) -> bool;
     fn len(&self) -> Option<u64>;
 
+    fn file_name_lossy(&self) -> Option<Cow<str>> {
+        self.path()
+            .file_name()
+            .map(|file_name| file_name.to_string_lossy())
+    }
+
     fn is_hidden(&self) -> bool {
         if self.is_parent() {
             false
@@ -136,11 +143,10 @@ pub trait FileEntry {
         if self.is_parent() {
             "\u{2b05}".to_string()
         } else {
-            let filename = self.path().file_name().unwrap().to_string_lossy();
             if self.is_file() {
-                filename.to_string()
+                self.file_name_lossy().unwrap().to_string()
             } else if self.is_dir() {
-                format!("{}/", filename)
+                format!("{}/", self.file_name_lossy().unwrap())
             } else {
                 unreachable!()
             }
