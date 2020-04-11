@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use textwrap;
-use tokio::time::{Duration, Instant};
 use tui::{
     layout::{Constraint, Direction, Layout},
     widgets::{Paragraph, Text, Widget},

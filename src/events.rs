@@ -1,7 +1,9 @@
-use std::time::Duration;
+use crossbeam_channel::{tick, unbounded, Receiver, RecvError};
+use std::io::stdin;
+use std::thread;
+use std::time::{Duration, Instant};
 use termion::event::Key;
 use termion::input::TermRead;
-use tokio::sync::mpsc::Receiver;
 
 pub enum Event {
     Input(Key),
@@ -10,19 +12,17 @@ pub enum Event {
 
 pub struct EventListener {
     key_receiver: Receiver<Key>,
-    tick_receiver: Receiver<()>,
+    tick_receiver: Receiver<Instant>,
 }
 
 impl EventListener {
     pub fn new(ticks_per_second: f64) -> Self {
         let key_receiver = {
-            let (mut tx, rx) = tokio::sync::mpsc::channel(1024);
-            tokio::spawn(async move {
-                for key in std::io::stdin().keys() {
+            let (tx, rx) = unbounded();
+            thread::spawn(move || {
+                for key in stdin().keys() {
                     if let Ok(key) = key {
-                        if let Err(_) = tx.send(key).await {
-                            return;
-                        }
+                        tx.send(key).unwrap();
                     } else {
                         return;
                     }
@@ -31,20 +31,7 @@ impl EventListener {
             rx
         };
 
-        let tick_receiver = {
-            let (mut tx, rx) = tokio::sync::mpsc::channel(128);
-            tokio::spawn(async move {
-                let duration = Duration::from_secs_f64(1.0 / ticks_per_second);
-                let mut interval = tokio::time::interval(duration);
-                loop {
-                    interval.tick().await;
-                    if let Err(_) = tx.send(()).await {
-                        return;
-                    }
-                }
-            });
-            rx
-        };
+        let tick_receiver = tick(Duration::from_secs_f64(1.0 / ticks_per_second));
 
         EventListener {
             key_receiver,
@@ -52,14 +39,13 @@ impl EventListener {
         }
     }
 
-    pub async fn get_next_event(&mut self) -> Event {
-        tokio::select! {
-            key = self.key_receiver.recv() => {
-                Event::Input(key.unwrap())
+    pub fn get_next_event(&mut self) -> Result<Event, RecvError> {
+        select! {
+            recv(self.key_receiver) -> key => Ok(Event::Input(key?)),
+            recv(self.tick_receiver) -> instant => {
+                let _ = instant?;
+                Ok(Event::Tick)
             },
-            _ = self.tick_receiver.recv() => {
-                Event::Tick
-            }
         }
     }
 }

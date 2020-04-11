@@ -6,12 +6,13 @@ use clap;
 use dirs;
 use ssh2;
 use std::error::Error;
-use std::io::Write;
+use std::io::{stdin, stdout, Write};
 use std::iter::Iterator;
 use std::net::TcpStream;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::thread;
 use termion::event::Key;
 
 pub struct Rftp {
@@ -185,8 +186,8 @@ impl Rftp {
         let show_hidden_files = Arc::clone(&self.show_hidden_files);
         let files = Arc::clone(&self.files);
 
-        tokio::spawn(async move {
-            let result = upload(source, dest, &sftp, &progress).await.and({
+        thread::spawn(move || {
+            let result = upload(source, dest, &sftp, &progress).and({
                 let mut files = files.lock().unwrap();
                 files.fetch_remote_files(&sftp, show_hidden_files.load(Ordering::Relaxed))
             });
@@ -213,8 +214,8 @@ impl Rftp {
         let show_hidden_files = Arc::clone(&self.show_hidden_files);
         let files = Arc::clone(&self.files);
 
-        tokio::spawn(async move {
-            let result = download(source, dest, &sftp, &progress).await.and({
+        thread::spawn(move || {
+            let result = download(source, dest, &sftp, &progress).and({
                 let mut files = files.lock().unwrap();
                 files.fetch_local_files(show_hidden_files.load(Ordering::Relaxed))
             });
@@ -324,9 +325,9 @@ fn create_session(
                 destination, known_hosts_path
             );
             print!("Would you like to add it (yes/no)? ");
-            std::io::stdout().flush()?;
+            stdout().flush()?;
             let mut input = String::new();
-            std::io::stdin().read_line(&mut input)?;
+            stdin().read_line(&mut input)?;
             match input.trim().as_ref() {
                 "YES" | "Yes" | "yes" => {
                     known_hosts.add(destination, key, "", key_type.into())?;
