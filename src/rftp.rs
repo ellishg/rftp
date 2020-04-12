@@ -67,7 +67,7 @@ impl Rftp {
 
     pub fn on_event(&mut self, key: Key) -> Result<(), Box<dyn Error>> {
         match key {
-            Key::Esc => {
+            Key::Char('Q') => {
                 self.is_alive = false;
             }
             Key::Char('q') => {
@@ -75,8 +75,7 @@ impl Rftp {
                     self.is_alive = false;
                 } else {
                     self.user_message.report(
-                        "There are still downloads/uploads in progress. \
-                         Press the Escape key to force quit.",
+                        "There are still downloads/uploads in progress. Press Q to force quit.",
                     );
                 }
             }

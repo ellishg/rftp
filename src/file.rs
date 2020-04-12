@@ -307,8 +307,7 @@ impl FileList {
         self.local_directory = canonicalize(path)?;
         self.fetch_local_files(keep_hidden_files)?;
         // Make sure we have a valid entry selected.
-        self.next_selected();
-        self.prev_selected();
+        self.apply_op_to_selected(|i| i);
         Ok(())
     }
 
@@ -322,8 +321,7 @@ impl FileList {
         self.remote_directory = path.as_ref().to_path_buf();
         self.fetch_remote_files(sftp, keep_hidden_files)?;
         // Make sure we have a valid entry selected.
-        self.next_selected();
-        self.prev_selected();
+        self.apply_op_to_selected(|i| i);
         Ok(())
     }
 
