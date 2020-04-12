@@ -5,7 +5,7 @@ use std::env;
 use std::error::Error;
 use std::fs::{canonicalize, metadata, read_dir, File};
 use std::io;
-use std::io::{BufWriter, Read, Write};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use tui::{
     layout::{Constraint, Direction, Layout},
@@ -60,23 +60,20 @@ pub fn download(
     progress: &Progress,
 ) -> io::Result<()> {
     assert!(source.is_file(), "Source must be a file!");
-    let source = source.path();
-    let mut source = sftp.open(&source)?;
-    let dest = File::create(dest)?;
-    let mut writer = BufWriter::new(dest);
-    let mut buffer = vec![0; CHUNK_SIZE];
+    let mut source = sftp.open(&source.path())?;
+    let mut dest = File::create(dest)?;
+    let mut buffer = [0; CHUNK_SIZE];
 
     loop {
         let bytes_read = source.read(&mut buffer)?;
         if bytes_read == 0 {
             break;
         } else {
-            writer.write_all(&buffer[..bytes_read])?;
+            dest.write_all(&buffer[..bytes_read])?;
             progress.inc(bytes_read as u64);
         }
     }
 
-    writer.flush()?;
     progress.finish();
     Ok(())
 }
@@ -92,7 +89,7 @@ pub fn upload(
     assert!(source.is_file(), "Source must be a file!");
     let mut source = File::open(source.path())?;
     let mut dest = sftp.create(dest.as_ref())?;
-    let mut buffer = vec![0; CHUNK_SIZE];
+    let mut buffer = [0; CHUNK_SIZE];
 
     loop {
         let bytes_read = source.read(&mut buffer)?;
