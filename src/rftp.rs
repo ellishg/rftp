@@ -286,6 +286,45 @@ fn create_session(
     session.set_tcp_stream(tcp);
     session.handshake()?;
 
+    let mut known_hosts = session.known_hosts()?;
+    let known_hosts_path = dirs::home_dir()
+        .ok_or("unable to find home directory")?
+        .join(".ssh/known_hosts");
+    known_hosts.read_file(&known_hosts_path, ssh2::KnownHostFileKind::OpenSSH)?;
+    let (key, key_type) = session.host_key().ok_or("unable to get host key")?;
+    match known_hosts.check(destination, key) {
+        ssh2::CheckResult::Match => {}
+        ssh2::CheckResult::NotFound => {
+            println!(
+                "The host key for {} was not found in {:?}.",
+                destination, known_hosts_path
+            );
+            print!("Would you like to add it (yes/no)? ");
+            stdout().flush()?;
+            let mut input = String::new();
+            stdin().read_line(&mut input)?;
+            match input.trim().as_ref() {
+                "YES" | "Yes" | "yes" => {
+                    known_hosts.add(destination, key, "", key_type.into())?;
+                    known_hosts.write_file(&known_hosts_path, ssh2::KnownHostFileKind::OpenSSH)?;
+                }
+                _ => {
+                    return Err(Box::from(format!(
+                        "the authenticity of host {} cannot be established",
+                        destination
+                    )));
+                }
+            };
+        }
+        ssh2::CheckResult::Mismatch => {
+            eprintln!("####################################################");
+            eprintln!("# WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED! #");
+            eprintln!("####################################################");
+            return Err(Box::from("possible person in the middle attack"));
+        }
+        ssh2::CheckResult::Failure => return Err(Box::from("failed to check known hosts")),
+    };
+
     let mut auth_methods = session.auth_methods(username)?.split(",");
     while !session.authenticated() {
         match auth_methods.next() {
@@ -323,41 +362,5 @@ fn create_session(
         }
     }
 
-    let mut known_hosts = session.known_hosts()?;
-    let known_hosts_path = dirs::home_dir()
-        .ok_or("unable to find home directory")?
-        .join(".ssh/known_hosts");
-    known_hosts.read_file(&known_hosts_path, ssh2::KnownHostFileKind::OpenSSH)?;
-    let (key, key_type) = session.host_key().ok_or("unable to get host key")?;
-    match known_hosts.check(destination, key) {
-        ssh2::CheckResult::Match => Ok(session),
-        ssh2::CheckResult::NotFound => {
-            println!(
-                "The host key for {} was not found in {:?}.",
-                destination, known_hosts_path
-            );
-            print!("Would you like to add it (yes/no)? ");
-            stdout().flush()?;
-            let mut input = String::new();
-            stdin().read_line(&mut input)?;
-            match input.trim().as_ref() {
-                "YES" | "Yes" | "yes" => {
-                    known_hosts.add(destination, key, "", key_type.into())?;
-                    known_hosts.write_file(&known_hosts_path, ssh2::KnownHostFileKind::OpenSSH)?;
-                    Ok(session)
-                }
-                _ => Err(Box::from(format!(
-                    "the authenticity of host {} cannot be established",
-                    destination
-                ))),
-            }
-        }
-        ssh2::CheckResult::Mismatch => {
-            eprintln!("####################################################");
-            eprintln!("# WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED! #");
-            eprintln!("####################################################");
-            Err(Box::from("possible person in the middle attack"))
-        }
-        ssh2::CheckResult::Failure => Err(Box::from("failed to check known hosts")),
-    }
+    Ok(session)
 }
