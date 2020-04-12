@@ -7,7 +7,7 @@ A remake of `sftp` written in Rust.
 ## Installation
 This will install `rftp` to `~/.cargo/bin`.
 ```bash
-cargo install --path .
+cargo install rftp
 ```
 
 ## Usage
@@ -23,4 +23,4 @@ rftp <destination> -u <username> -p <port>
 | Enter      | Enter into the selected directory |
 | Spacebar   | Download/Upload the selected file |
 | **q**      | Quit                              |
-| Escape     | Force quit                        |
+| **Q**      | Force quit                        |

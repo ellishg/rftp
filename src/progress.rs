@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
-use tokio::time::{Duration, Instant};
+use std::time::{Duration, Instant};
 use tui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},

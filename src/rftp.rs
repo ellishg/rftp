@@ -6,12 +6,13 @@ use clap;
 use dirs;
 use ssh2;
 use std::error::Error;
-use std::io::Write;
+use std::io::{stdin, stdout, Write};
 use std::iter::Iterator;
 use std::net::TcpStream;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::thread;
 use termion::event::Key;
 
 pub struct Rftp {
@@ -28,6 +29,9 @@ impl Rftp {
     pub fn new() -> Result<Self, Box<dyn Error>> {
         let matches = clap::clap_app!(
             rftp =>
+                (version: clap::crate_version!())
+                (author: clap::crate_authors!())
+                (about: clap::crate_description!())
                 (@arg destination: +required)
                 (@arg port: -p --port +takes_value)
                 (@arg username: -u --user +takes_value +required)
@@ -66,7 +70,7 @@ impl Rftp {
 
     pub fn on_event(&mut self, key: Key) -> Result<(), Box<dyn Error>> {
         match key {
-            Key::Esc => {
+            Key::Char('Q') => {
                 self.is_alive = false;
             }
             Key::Char('q') => {
@@ -74,8 +78,7 @@ impl Rftp {
                     self.is_alive = false;
                 } else {
                     self.user_message.report(
-                        "There are still downloads/uploads in progress. \
-                         Press the Escape key to force quit.",
+                        "There are still downloads/uploads in progress. Press Q to force quit.",
                     );
                 }
             }
@@ -185,8 +188,8 @@ impl Rftp {
         let show_hidden_files = Arc::clone(&self.show_hidden_files);
         let files = Arc::clone(&self.files);
 
-        tokio::spawn(async move {
-            let result = upload(source, dest, &sftp, &progress).await.and({
+        thread::spawn(move || {
+            let result = upload(source, dest, &sftp, &progress).and({
                 let mut files = files.lock().unwrap();
                 files.fetch_remote_files(&sftp, show_hidden_files.load(Ordering::Relaxed))
             });
@@ -213,8 +216,8 @@ impl Rftp {
         let show_hidden_files = Arc::clone(&self.show_hidden_files);
         let files = Arc::clone(&self.files);
 
-        tokio::spawn(async move {
-            let result = download(source, dest, &sftp, &progress).await.and({
+        thread::spawn(move || {
+            let result = download(source, dest, &sftp, &progress).and({
                 let mut files = files.lock().unwrap();
                 files.fetch_local_files(show_hidden_files.load(Ordering::Relaxed))
             });
@@ -324,9 +327,9 @@ fn create_session(
                 destination, known_hosts_path
             );
             print!("Would you like to add it (yes/no)? ");
-            std::io::stdout().flush()?;
+            stdout().flush()?;
             let mut input = String::new();
-            std::io::stdin().read_line(&mut input)?;
+            stdin().read_line(&mut input)?;
             match input.trim().as_ref() {
                 "YES" | "Yes" | "yes" => {
                     known_hosts.add(destination, key, "", key_type.into())?;
