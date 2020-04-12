@@ -29,6 +29,9 @@ impl Rftp {
     pub fn new() -> Result<Self, Box<dyn Error>> {
         let matches = clap::clap_app!(
             rftp =>
+                (version: clap::crate_version!())
+                (author: clap::crate_authors!())
+                (about: clap::crate_description!())
                 (@arg destination: +required)
                 (@arg port: -p --port +takes_value)
                 (@arg username: -u --user +takes_value +required)
