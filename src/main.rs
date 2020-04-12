@@ -3,6 +3,7 @@ extern crate crossbeam_channel;
 #[macro_use]
 extern crate clap;
 
+mod connect;
 mod events;
 mod file;
 mod progress;
