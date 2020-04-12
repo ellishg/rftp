@@ -194,7 +194,12 @@ impl Rftp {
                 files.fetch_remote_files(&sftp, show_hidden_files.load(Ordering::Relaxed))
             });
             if let Err(err) = result {
-                user_message.report(&format!("Error: {}!", err.to_string()));
+                progress.finish();
+                user_message.report(&format!(
+                    "Error: Unable to upload \"{}\". {}",
+                    source_filename,
+                    err.to_string()
+                ));
             } else {
                 user_message.report(&format!("Finished uploading \"{}\".", source_filename));
             }
@@ -222,7 +227,12 @@ impl Rftp {
                 files.fetch_local_files(show_hidden_files.load(Ordering::Relaxed))
             });
             if let Err(err) = result {
-                user_message.report(&format!("Error: {}!", err.to_string()));
+                progress.finish();
+                user_message.report(&format!(
+                    "Error: Unable to download \"{}\". {}",
+                    source_filename,
+                    err.to_string()
+                ));
             } else {
                 user_message.report(&format!("Finished downloading \"{}\".", source_filename));
             }
