@@ -49,8 +49,7 @@ pub struct FileList {
     selected: SelectedFileEntryIndex,
 }
 
-// TODO: Tune this variable to make downloads/uploads faster.
-const CHUNK_SIZE: usize = 1024 * 1024 * 8;
+const CHUNK_SIZE: usize = 8 * 1024;
 
 /// Reads the remote file `source`, creates/truncates the local file `dest`,
 /// and writes the data to `dest`.
