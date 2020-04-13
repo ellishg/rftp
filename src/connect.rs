@@ -1,3 +1,4 @@
+use base64;
 use dirs::home_dir;
 use std::error::Error;
 use std::io::{stdin, stdout, Write};
@@ -44,16 +45,31 @@ fn authenticate_host(
     match known_hosts.check_port(destination, port, key) {
         ssh2::CheckResult::Match => Ok(session),
         ssh2::CheckResult::NotFound => {
+            let fingerprint = session
+                .host_key_hash(ssh2::HashType::Sha256)
+                .map(|hash| ("SHA256", hash))
+                .or_else(|| {
+                    session
+                        .host_key_hash(ssh2::HashType::Sha1)
+                        .map(|hash| ("SHA128", hash))
+                })
+                .map(|(hash_type, fingerprint)| {
+                    format!("{}:{}", hash_type, base64::encode(fingerprint))
+                })
+                .ok_or("unable to get fingerprint of host")?;
+
             println!(
                 "The host key for {} was not found in {:?}.",
                 destination, known_hosts_path
             );
+            println!("Fingerprint: {}", fingerprint);
             print!("Would you like to add it (yes/no)? ");
             stdout().flush()?;
+
             let mut input = String::new();
             stdin().read_line(&mut input)?;
             match input.trim().as_ref() {
-                "YES" | "Yes" | "yes" => {
+                "Y" | "y" | "YES" | "Yes" | "yes" => {
                     known_hosts.add(destination, key, "", key_type.into())?;
                     known_hosts.write_file(&known_hosts_path, ssh2::KnownHostFileKind::OpenSSH)?;
                     Ok(session)
