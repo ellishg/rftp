@@ -1,4 +1,6 @@
 use crate::progress::Progress;
+use crate::utils::get_remote_home_dir;
+
 use ssh2;
 use std::borrow::Cow;
 use std::env;
@@ -493,25 +495,6 @@ impl FileList {
             .collect();
         let selected = self.get_remote_selected_index();
         render(&title, items, selected, remote_rect);
-    }
-}
-
-/// Return the path to the host home directory.
-fn get_remote_home_dir(session: &ssh2::Session) -> Result<PathBuf, Box<dyn Error>> {
-    let mut channel = session.channel_session()?;
-    channel.exec("pwd")?;
-    let mut result = String::new();
-    channel.read_to_string(&mut result)?;
-    let result = result.trim();
-    channel.wait_close()?;
-    let exit_status = channel.exit_status()?;
-    if exit_status == 0 {
-        Ok(PathBuf::from(result))
-    } else {
-        Err(Box::from(format!(
-            "channel closed with exit status {}",
-            exit_status
-        )))
     }
 }
 
