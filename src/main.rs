@@ -26,6 +26,7 @@ fn main() {
     });
 }
 
+/// Run the program.
 fn run() -> Result<(), Box<dyn Error>> {
     let mut rftp = Rftp::new()?;
 

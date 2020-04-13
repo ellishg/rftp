@@ -49,6 +49,7 @@ pub struct FileList {
     selected: SelectedFileEntryIndex,
 }
 
+/// `CHUNK_SIZE` bytes of data is read from the source and then it is all written to the dest.
 const CHUNK_SIZE: usize = 8 * 1024;
 
 /// Reads the remote file `source`, creates/truncates the local file `dest`,
@@ -106,18 +107,25 @@ pub fn upload(
 }
 
 pub trait FileEntry {
+    /// Return the full path of this entry.
     fn path(&self) -> &Path;
+    /// Return true if this entry is a directory or a parent directory.
     fn is_dir(&self) -> bool;
+    /// Return true if this entry is a file.
     fn is_file(&self) -> bool;
+    /// Return true if this entry is a parent directory.
     fn is_parent(&self) -> bool;
+    /// Return the size of this entry.
     fn len(&self) -> Option<u64>;
 
+    /// Return the file name of this entry.
     fn file_name_lossy(&self) -> Option<Cow<str>> {
         self.path()
             .file_name()
             .map(|file_name| file_name.to_string_lossy())
     }
 
+    /// Return true if this entry is a hidden file or directory.
     fn is_hidden(&self) -> bool {
         if self.is_parent() {
             false
@@ -129,6 +137,7 @@ pub trait FileEntry {
     }
 
     // TODO: Return Text
+    /// Returns the text of this entry for displaying to the user.
     fn to_text(&self) -> String {
         if self.is_parent() {
             "\u{2b05}".to_string()
@@ -249,6 +258,7 @@ impl FileList {
         Ok(list)
     }
 
+    /// Read the current local directory and populate this file list with the new local entries.
     pub fn fetch_local_files(&mut self, keep_hidden_files: bool) -> io::Result<()> {
         self.local_entries = vec![];
         if let Some(parent) = self.local_directory.parent() {
@@ -270,6 +280,7 @@ impl FileList {
         Ok(())
     }
 
+    /// Read the current remote directory and populate this file list with the new remote entries.
     pub fn fetch_remote_files(
         &mut self,
         sftp: &ssh2::Sftp,
@@ -299,6 +310,7 @@ impl FileList {
         Ok(())
     }
 
+    /// Set the current local directory and then fetch its local files.
     pub fn set_local_working_path(
         &mut self,
         path: impl AsRef<Path>,
@@ -311,6 +323,7 @@ impl FileList {
         Ok(())
     }
 
+    /// Set the current remote directory and then fetch its remote files.
     pub fn set_remote_working_path(
         &mut self,
         path: impl AsRef<Path>,
@@ -325,14 +338,17 @@ impl FileList {
         Ok(())
     }
 
+    /// Return the current local directory.
     pub fn get_local_working_path(&self) -> &Path {
         &self.local_directory
     }
 
+    /// Return the current remote directory.
     pub fn get_remote_working_path(&self) -> &Path {
         &self.remote_directory
     }
 
+    /// Return the currently selected file entry.
     pub fn get_selected_entry(&self) -> SelectedFileEntry {
         match self.selected {
             SelectedFileEntryIndex::Local(i) => {
@@ -347,6 +363,7 @@ impl FileList {
         }
     }
 
+    /// Return the index of the currently selected file entry if a local file entry is selected.
     pub fn get_local_selected_index(&self) -> Option<usize> {
         match self.selected {
             SelectedFileEntryIndex::Local(i) => Some(i),
@@ -354,6 +371,7 @@ impl FileList {
         }
     }
 
+    /// Return the index of the currently selected file entry if a remote file entry is selected.
     pub fn get_remote_selected_index(&self) -> Option<usize> {
         match self.selected {
             SelectedFileEntryIndex::Remote(i) => Some(i),
@@ -361,20 +379,27 @@ impl FileList {
         }
     }
 
+    /// Apply `f` to the index of the currently selected file entry.
     fn apply_op_to_selected<F>(&mut self, f: F)
     where
         F: Fn(isize) -> isize,
     {
         self.selected = match self.selected {
             SelectedFileEntryIndex::Local(i) => {
-                assert!(!self.local_entries.is_empty());
-                let n = self.local_entries.len();
-                SelectedFileEntryIndex::Local(f(i as isize).rem_euclid(n as isize) as usize)
+                if self.local_entries.is_empty() {
+                    SelectedFileEntryIndex::None
+                } else {
+                    let n = self.local_entries.len();
+                    SelectedFileEntryIndex::Local(f(i as isize).rem_euclid(n as isize) as usize)
+                }
             }
             SelectedFileEntryIndex::Remote(i) => {
-                assert!(!self.remote_entries.is_empty());
-                let n = self.remote_entries.len();
-                SelectedFileEntryIndex::Remote(f(i as isize).rem_euclid(n as isize) as usize)
+                if self.remote_entries.is_empty() {
+                    SelectedFileEntryIndex::None
+                } else {
+                    let n = self.remote_entries.len();
+                    SelectedFileEntryIndex::Remote(f(i as isize).rem_euclid(n as isize) as usize)
+                }
             }
             SelectedFileEntryIndex::None => {
                 if !self.remote_entries.is_empty() {
@@ -388,14 +413,17 @@ impl FileList {
         }
     }
 
+    /// Set the currently selected file entry to the next file entry.
     pub fn next_selected(&mut self) {
         self.apply_op_to_selected(|i| i + 1)
     }
 
+    /// Set the currently selected file entry to the previous file entry.
     pub fn prev_selected(&mut self) {
         self.apply_op_to_selected(|i| i - 1)
     }
 
+    /// Toggle the currently selected file entry between the local and remote file entries.
     pub fn toggle_selected(&mut self) {
         self.selected = match self.selected {
             SelectedFileEntryIndex::Local(i) => {
@@ -425,6 +453,7 @@ impl FileList {
         self.apply_op_to_selected(|i| i);
     }
 
+    /// Draw the current file list.
     pub fn draw<B>(&self, frame: &mut tui::terminal::Frame<B>, rect: tui::layout::Rect)
     where
         B: tui::backend::Backend,
@@ -467,6 +496,7 @@ impl FileList {
     }
 }
 
+/// Return the path to the host home directory.
 fn get_remote_home_dir(session: &ssh2::Session) -> Result<PathBuf, Box<dyn Error>> {
     let mut channel = session.channel_session()?;
     channel.exec("pwd")?;

@@ -71,11 +71,13 @@ impl Rftp {
         })
     }
 
+    /// Work that is done on every "tick".
     pub fn tick(&mut self) -> Result<(), Box<dyn Error>> {
         self.progress_bars.retain(|p| !p.is_finished());
         Ok(())
     }
 
+    /// Work that is done on every key press.
     pub fn on_event(&mut self, key: Key) -> Result<(), Box<dyn Error>> {
         match key {
             Key::Char('Q') => {
@@ -247,10 +249,12 @@ impl Rftp {
         });
     }
 
+    /// Return true if the user has not quit.
     pub fn is_alive(&self) -> bool {
         self.is_alive
     }
 
+    /// Draw the current state.
     pub fn draw<B>(&self, mut frame: tui::terminal::Frame<B>)
     where
         B: tui::backend::Backend,
@@ -267,7 +271,6 @@ impl Rftp {
 
 impl Drop for Rftp {
     fn drop(&mut self) {
-        // TODO: Shutdown tcp stream.
         self.session
             .disconnect(Some(ssh2::DisconnectCode::ByApplication), "", None)
             .unwrap();

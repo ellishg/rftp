@@ -10,6 +10,7 @@ use tui::{
     widgets::{Gauge, Widget},
 };
 
+/// The max age of any item in the history.
 const HISTORY_MAX_AGE: Duration = Duration::from_secs(5);
 
 pub struct Progress {

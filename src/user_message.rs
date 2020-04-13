@@ -7,7 +7,9 @@ use tui::{
     widgets::{Paragraph, Text, Widget},
 };
 
+/// The max number of messages.
 const NUM_MAX_MESSAGES: u16 = 5;
+/// The max age of any message.
 const MAX_MESSAGE_AGE: Duration = Duration::from_secs(10);
 
 pub struct UserMessage {
@@ -21,6 +23,9 @@ impl UserMessage {
         }
     }
 
+    /// Report a message to the user that will last for `MAX_MESSAGE_AGE`.
+    ///
+    /// Messages are pushed to a queue with a max size of `NUM_MAX_MESSAGES`.
     pub fn report(&self, message: &str) {
         let now = Instant::now();
         let message = message.to_string();
@@ -31,6 +36,7 @@ impl UserMessage {
         }
     }
 
+    /// Return a list of strings that represent messages to the user.
     fn get_lines(&self, max_age: Duration, max_width: u16) -> Vec<String> {
         let now = Instant::now();
         let messages = {
@@ -55,6 +61,7 @@ impl UserMessage {
             .collect()
     }
 
+    /// Draw all user messages.
     pub fn draw<B>(
         &self,
         frame: &mut tui::terminal::Frame<B>,

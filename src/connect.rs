@@ -6,6 +6,7 @@ use std::error::Error;
 use std::io::{stdin, stdout, Write};
 use std::net::TcpStream;
 
+/// Create an authenticated `ssh2::Session`.
 pub fn create_session(
     destination: &str,
     username: &str,
@@ -33,6 +34,7 @@ pub fn create_session(
     Ok(session)
 }
 
+/// Authenticate the identity of the host by checking the host key in `~/.ssh/known_hosts`.
 fn authenticate_host(
     session: ssh2::Session,
     destination: &str,
@@ -92,6 +94,7 @@ fn authenticate_host(
     }
 }
 
+/// Authenticate the session using a password or public key.
 fn authenticate_session(
     session: ssh2::Session,
     username: &str,

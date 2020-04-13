@@ -39,6 +39,7 @@ impl EventListener {
         }
     }
 
+    /// Return the next "tick" or key press that occures.
     pub fn get_next_event(&mut self) -> Result<Event, RecvError> {
         select! {
             recv(self.key_receiver) -> key => Ok(Event::Input(key?)),
