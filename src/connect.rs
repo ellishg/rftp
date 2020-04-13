@@ -97,6 +97,10 @@ fn authenticate_session(
     username: &str,
 ) -> Result<ssh2::Session, Box<dyn Error>> {
     for _ in 0..3 {
+        if session.authenticated() {
+            break;
+        }
+
         let auth_methods: HashSet<&str> = session.auth_methods(username)?.split(",").collect();
 
         if !session.authenticated() && auth_methods.contains("publickey") {
@@ -109,7 +113,35 @@ fn authenticate_session(
         }
 
         // if !session.authenticated() && auth_methods.contains("keyboard-interactive") {
-        //     // TODO
+        //     // TODO: Need to test.
+        //     struct Prompter;
+        //     impl ssh2::KeyboardInteractivePrompt for Prompter {
+        //         fn prompt(
+        //             &mut self,
+        //             _username: &str,
+        //             instructions: &str,
+        //             prompts: &[ssh2::Prompt],
+        //         ) -> Vec<String> {
+        //             prompts
+        //                 .iter()
+        //                 .map(|p| {
+        //                     println!("{}", instructions);
+        //                     if p.echo {
+        //                         let mut input = String::new();
+        //                         if stdin().read_line(&mut input).is_ok() {
+        //                             input
+        //                         } else {
+        //                             String::new()
+        //                         }
+        //                     } else {
+        //                         prompt_password_stdout(&p.text).unwrap_or_else(|_| String::new())
+        //                     }
+        //                 })
+        //                 .collect()
+        //         }
+        //     }
+        //     let mut prompter = Prompter;
+        //     session.userauth_keyboard_interactive(username, &mut prompter)?;
         // }
     }
 
