@@ -1,5 +1,7 @@
 use base64;
 use dirs::home_dir;
+use rpassword::prompt_password_stdout;
+use std::collections::HashSet;
 use std::error::Error;
 use std::io::{stdin, stdout, Write};
 use std::net::TcpStream;
@@ -94,47 +96,26 @@ fn authenticate_session(
     session: ssh2::Session,
     username: &str,
 ) -> Result<ssh2::Session, Box<dyn Error>> {
-    let mut auth_methods = session.auth_methods(username)?.split(",");
-    let mut tries_left: i32 = 3;
-    while !session.authenticated() {
-        if tries_left <= 0 {
-            return Err(Box::from("unable to authenticate session"));
+    for _ in 0..3 {
+        let auth_methods: HashSet<&str> = session.auth_methods(username)?.split(",").collect();
+
+        if !session.authenticated() && auth_methods.contains("publickey") {
+            session.userauth_agent(username)?;
         }
-        tries_left -= 1;
-        match auth_methods.next() {
-            Some("password") => {
-                // TODO: I can't get this to work yet.
-                // struct Prompter;
-                // impl ssh2::KeyboardInteractivePrompt for Prompter {
-                //     fn prompt(
-                //         &mut self,
-                //         username: &str,
-                //         instructions: &str,
-                //         prompts: &[ssh2::Prompt],
-                //     ) -> Vec<String> {
-                //         println!("{}", username);
-                //         println!("{}", instructions);
-                //         prompts.iter().map(|p| p.text.to_string()).collect()
-                //     }
-                // }
-                // let mut prompter = Prompter;
-                // session.userauth_keyboard_interactive(username, &mut prompter)?;
-            }
-            Some("publickey") => {
-                session.userauth_agent(username)?;
-            }
-            Some(auth_method) => {
-                // TODO: Handle more authentication methods.
-                eprintln!("Unknown authentication method \"{}\".", auth_method);
-            }
-            None => {
-                session.userauth_agent(username)?;
-                if !session.authenticated() {
-                    return Err(Box::from("unable to authenticate session"));
-                }
-            }
+
+        if !session.authenticated() && auth_methods.contains("password") {
+            let password = prompt_password_stdout("🔐 Password: ")?;
+            session.userauth_password(username, &password).ok();
         }
+
+        // if !session.authenticated() && auth_methods.contains("keyboard-interactive") {
+        //     // TODO
+        // }
     }
 
-    Ok(session)
+    if session.authenticated() {
+        Ok(session)
+    } else {
+        Err(Box::from("unable to authenticate session"))
+    }
 }

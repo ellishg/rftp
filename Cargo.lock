@@ -338,10 +338,21 @@ dependencies = [
  "clap",
  "crossbeam-channel",
  "dirs",
+ "rpassword",
  "ssh2",
  "termion",
  "textwrap",
  "tui",
+]
+
+[[package]]
+name = "rpassword"
+version = "4.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "99371657d3c8e4d816fb6221db98fa408242b0b53bac08f8676a41f8554fe99f"
+dependencies = [
+ "libc",
+ "winapi",
 ]
 
 [[package]]
