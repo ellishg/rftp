@@ -32,14 +32,24 @@ impl Rftp {
                 (about: clap::crate_description!())
                 (@arg destination: +required)
                 (@arg port: -p --port +takes_value)
-                (@arg username: -u --user +takes_value +required)
+                (@arg username: -u --user +takes_value)
         )
         .get_matches();
 
         let destination = matches.value_of("destination").unwrap();
-        let username = matches.value_of("username").unwrap();
+        let username = {
+            if let Some(username) = matches.value_of("username") {
+                username.to_string()
+            } else if cfg!(unix) {
+                std::env::var("USER")?
+            } else if cfg!(windows) {
+                std::env::var("USERNAME")?
+            } else {
+                unimplemented!()
+            }
+        };
         let port = matches.value_of("port");
-        let session = create_session(destination, username, port)?;
+        let session = create_session(destination, &username, port)?;
         let sftp = session.sftp()?;
 
         let show_hidden_files = false;
