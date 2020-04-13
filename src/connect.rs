@@ -16,6 +16,7 @@ pub fn create_session(
     } else {
         TcpStream::connect(destination).unwrap_or(TcpStream::connect((destination, 22))?)
     };
+    let port = tcp.peer_addr()?.port();
 
     let mut session = ssh2::Session::new()?;
     session.set_timeout(10000);
@@ -23,7 +24,7 @@ pub fn create_session(
     session.set_tcp_stream(tcp);
     session.handshake()?;
 
-    let session = authenticate_host(session, destination)?;
+    let session = authenticate_host(session, destination, port)?;
     let session = authenticate_session(session, username)?;
 
     Ok(session)
@@ -32,6 +33,7 @@ pub fn create_session(
 fn authenticate_host(
     session: ssh2::Session,
     destination: &str,
+    port: u16,
 ) -> Result<ssh2::Session, Box<dyn Error>> {
     let mut known_hosts = session.known_hosts()?;
     let known_hosts_path = home_dir()
@@ -39,7 +41,7 @@ fn authenticate_host(
         .join(".ssh/known_hosts");
     known_hosts.read_file(&known_hosts_path, ssh2::KnownHostFileKind::OpenSSH)?;
     let (key, key_type) = session.host_key().ok_or("unable to get host key")?;
-    match known_hosts.check(destination, key) {
+    match known_hosts.check_port(destination, port, key) {
         ssh2::CheckResult::Match => Ok(session),
         ssh2::CheckResult::NotFound => {
             println!(
