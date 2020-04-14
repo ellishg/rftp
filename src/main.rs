@@ -36,6 +36,7 @@ fn run() -> Result<(), Box<dyn Error>> {
         let backend = TermionBackend::new(stdout);
         tui::Terminal::new(backend)?
     };
+    let _hide_cursor = termion::cursor::HideCursor::from(stdout());
 
     let mut event_listener = EventListener::new(30.0);
 
