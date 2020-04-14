@@ -562,11 +562,11 @@ mod tests {
             buffer_without_style(terminal.backend().buffer()),
             Buffer::with_lines(vec![
                 "┌Local: \"/a/b/c\"────────┐┌Remote: \"home/files\"───┐",
-                "│⬅                      ││   ⬅                   │",
-                "│myfile.txt             ││   pic.png             │",
-                "│myotherfile.dat        ││>> movie.mkv           │",
-                "│important/             ││   games/              │",
-                "│                       ││   trash/              │",
+                "│⬅                      ││  ⬅                    │",
+                "│myfile.txt             ││  pic.png              │",
+                "│myotherfile.dat        ││>>movie.mkv            │",
+                "│important/             ││  games/               │",
+                "│                       ││  trash/               │",
                 "│                       ││                       │",
                 "└───────────────────────┘└───────────────────────┘",
             ])

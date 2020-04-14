@@ -201,9 +201,9 @@ checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
 name = "libc"
-version = "0.2.68"
+version = "0.2.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dea0c0405123bba743ee3f91f49b1c7cfb684eef0da0a50110f758ccf24cdff0"
+checksum = "99e85c08494b21a9054e7fe1374a732aeadaff3980b6990b94bfd3a70f690005"
 
 [[package]]
 name = "libssh2-sys"
@@ -412,7 +412,7 @@ dependencies = [
 [[package]]
 name = "tui"
 version = "0.8.0"
-source = "git+https://github.com/fdehau/tui-rs#8104b17ee6affa0d38f27b661e751d91df43cc8b"
+source = "git+https://github.com/fdehau/tui-rs#4f728d363f0be75f844f39b2fa2705e7b4373953"
 dependencies = [
  "bitflags",
  "cassowary",
