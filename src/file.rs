@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use tui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
-    widgets::{Block, Borders, SelectableList, Widget},
+    widgets::{Block, Borders, List, ListState, Text},
 };
 
 #[derive(Clone, PartialEq, Eq, Ord)]
@@ -138,19 +138,24 @@ pub trait FileEntry {
         }
     }
 
-    // TODO: Return Text
     /// Returns the text of this entry for displaying to the user.
-    fn to_text(&self) -> String {
+    fn to_text(&self) -> Text {
         if self.is_parent() {
-            "\u{2b05}".to_string()
+            // TODO: We can either use the emoji "⬅" or ".." for the parent directory.
+            Text::raw("⬅")
+        // Text::Styled(Cow::Borrowed(".."), Style::default().fg(Color::Red))
+        } else if self.is_file() {
+            Text::styled(
+                self.file_name_lossy().unwrap(),
+                Style::default().fg(Color::LightGreen),
+            )
+        } else if self.is_dir() {
+            Text::styled(
+                format!("{}/", self.file_name_lossy().unwrap()),
+                Style::default().fg(Color::Blue),
+            )
         } else {
-            if self.is_file() {
-                self.file_name_lossy().unwrap().to_string()
-            } else if self.is_dir() {
-                format!("{}/", self.file_name_lossy().unwrap())
-            } else {
-                unreachable!()
-            }
+            unreachable!()
         }
     }
 }
@@ -366,19 +371,25 @@ impl FileList {
     }
 
     /// Return the index of the currently selected file entry if a local file entry is selected.
-    pub fn get_local_selected_index(&self) -> Option<usize> {
-        match self.selected {
+    pub fn get_local_selected_index(&self) -> ListState {
+        let index = match self.selected {
             SelectedFileEntryIndex::Local(i) => Some(i),
             _ => None,
-        }
+        };
+        let mut state = ListState::default();
+        state.select(index);
+        state
     }
 
     /// Return the index of the currently selected file entry if a remote file entry is selected.
-    pub fn get_remote_selected_index(&self) -> Option<usize> {
-        match self.selected {
+    pub fn get_remote_selected_index(&self) -> ListState {
+        let index = match self.selected {
             SelectedFileEntryIndex::Remote(i) => Some(i),
             _ => None,
-        }
+        };
+        let mut state = ListState::default();
+        state.select(index);
+        state
     }
 
     /// Apply `f` to the index of the currently selected file entry.
@@ -466,35 +477,32 @@ impl FileList {
             .split(rect);
         let (local_rect, remote_rect) = (chunks[0], chunks[1]);
 
-        let mut render = |title, items: Vec<String>, selected, rect| {
-            // TODO: Would like to style items by file type.
-            //       https://github.com/fdehau/tui-rs/issues/254
-            SelectableList::default()
+        let generate_list = |title, items| {
+            List::new(items)
                 .block(Block::default().title(title).borders(Borders::ALL))
-                .items(items.as_slice())
-                .select(selected)
-                .highlight_style(Style::default().bg(Color::Yellow))
+                // .highlight_style(Style::default().bg(Color::Yellow))
                 .highlight_symbol(">>")
-                .render(frame, rect);
         };
 
         let title = format!("Local: {:?}", self.get_local_working_path());
-        let items = self
+        let items: Vec<_> = self
             .local_entries
             .iter()
             .map(|entry| entry.to_text())
             .collect();
-        let selected = self.get_local_selected_index();
-        render(&title, items, selected, local_rect);
+        let mut state = self.get_local_selected_index();
+        let list = generate_list(&title, items.into_iter());
+        frame.render_stateful_widget(list, local_rect, &mut state);
 
         let title = format!("Remote: {:?}", self.get_remote_working_path());
-        let items = self
+        let items: Vec<_> = self
             .remote_entries
             .iter()
             .map(|entry| entry.to_text())
             .collect();
-        let selected = self.get_remote_selected_index();
-        render(&title, items, selected, remote_rect);
+        let mut state = self.get_remote_selected_index();
+        let list = generate_list(&title, items.into_iter());
+        frame.render_stateful_widget(list, remote_rect, &mut state);
     }
 }
 
@@ -550,7 +558,7 @@ mod tests {
             buffer_without_style(terminal.backend().buffer()),
             Buffer::with_lines(vec![
                 "┌Local: \"/a/b/c\"────────┐┌Remote: \"home/files\"───┐",
-                "│\u{2b05}                      ││   \u{2b05}                   │",
+                "│⬅                      ││   ⬅                   │",
                 "│myfile.txt             ││   pic.png             │",
                 "│myotherfile.dat        ││>> movie.mkv           │",
                 "│important/             ││   games/              │",

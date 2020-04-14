@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use textwrap;
 use tui::{
     layout::{Constraint, Direction, Layout},
-    widgets::{Paragraph, Text, Widget},
+    widgets::{Paragraph, Text},
 };
 
 /// The max number of messages.
@@ -90,9 +90,8 @@ impl UserMessage {
                 .iter()
                 .map(|line| Text::raw(format!("{}\n", line)))
                 .collect();
-            Paragraph::new(items.iter())
-                .wrap(true)
-                .render(frame, message_rect);
+            let paragraph = Paragraph::new(items.iter()).wrap(true);
+            frame.render_widget(paragraph, message_rect);
 
             rect
         }

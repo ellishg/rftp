@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use tui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
-    widgets::{Gauge, Widget},
+    widgets::Gauge,
 };
 
 /// The max age of any item in the history.
@@ -199,11 +199,12 @@ impl Progress {
                 info = info,
             )
         };
-        Gauge::default()
+        let gauge = Gauge::default()
             .style(Style::default().fg(Color::Yellow))
             .label(&label)
-            .ratio(self.get_ratio())
-            .render(frame, rect);
+            .ratio(self.get_ratio());
+
+        frame.render_widget(gauge, rect);
     }
 }
 
