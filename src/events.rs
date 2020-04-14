@@ -1,17 +1,15 @@
 use crossbeam_channel::{tick, unbounded, Receiver, RecvError};
-use std::io::stdin;
+use crossterm;
 use std::thread;
 use std::time::{Duration, Instant};
-use termion::event::Key;
-use termion::input::TermRead;
 
 pub enum Event {
-    Input(Key),
+    Input(crossterm::event::KeyEvent),
     Tick,
 }
 
 pub struct EventListener {
-    key_receiver: Receiver<Key>,
+    key_receiver: Receiver<crossterm::event::KeyEvent>,
     tick_receiver: Receiver<Instant>,
 }
 
@@ -19,13 +17,13 @@ impl EventListener {
     pub fn new(ticks_per_second: f64) -> Self {
         let key_receiver = {
             let (tx, rx) = unbounded();
-            thread::spawn(move || {
-                for key in stdin().keys() {
-                    if let Ok(key) = key {
-                        tx.send(key).unwrap();
-                    } else {
-                        return;
+            thread::spawn(move || loop {
+                match crossterm::event::read() {
+                    Ok(crossterm::event::Event::Key(event)) => {
+                        tx.send(event).unwrap();
                     }
+                    Ok(_) => {}
+                    Err(_) => {}
                 }
             });
             rx

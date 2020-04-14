@@ -4,6 +4,7 @@ use crate::progress::Progress;
 use crate::user_message::UserMessage;
 
 use clap;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ssh2;
 use std::error::Error;
 use std::iter::Iterator;
@@ -11,7 +12,6 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use termion::event::Key;
 
 pub struct Rftp {
     session: ssh2::Session,
@@ -78,12 +78,18 @@ impl Rftp {
     }
 
     /// Work that is done on every key press.
-    pub fn on_event(&mut self, key: Key) -> Result<(), Box<dyn Error>> {
+    pub fn on_event(&mut self, key: KeyEvent) -> Result<(), Box<dyn Error>> {
         match key {
-            Key::Char('Q') => {
+            KeyEvent {
+                code: KeyCode::Char('Q'),
+                modifiers: KeyModifiers::NONE,
+            } => {
                 self.is_alive = false;
             }
-            Key::Char('q') => {
+            KeyEvent {
+                code: KeyCode::Char('q'),
+                modifiers: KeyModifiers::NONE,
+            } => {
                 if self.progress_bars.is_empty() {
                     self.is_alive = false;
                 } else {
@@ -92,7 +98,10 @@ impl Rftp {
                     );
                 }
             }
-            Key::Char('\n') => {
+            KeyEvent {
+                code: KeyCode::Enter,
+                modifiers: KeyModifiers::NONE,
+            } => {
                 let mut files = self.files.lock().unwrap();
                 match files.get_selected_entry() {
                     SelectedFileEntry::Local(entry) => {
@@ -130,7 +139,10 @@ impl Rftp {
                     }
                 }
             }
-            Key::Char(' ') => {
+            KeyEvent {
+                code: KeyCode::Char(' '),
+                modifiers: KeyModifiers::NONE,
+            } => {
                 let files = self.files.lock().unwrap();
                 match files.get_selected_entry() {
                     SelectedFileEntry::Local(source) => {
@@ -169,13 +181,42 @@ impl Rftp {
                     }
                 }
             }
-            Key::Down | Key::Char('j') => {
+            KeyEvent {
+                code: KeyCode::Char('j'),
+                modifiers: KeyModifiers::NONE,
+            }
+            | KeyEvent {
+                code: KeyCode::Down,
+                modifiers: KeyModifiers::NONE,
+            } => {
                 self.files.lock().unwrap().next_selected();
             }
-            Key::Up | Key::Char('k') => {
+            KeyEvent {
+                code: KeyCode::Char('k'),
+                modifiers: KeyModifiers::NONE,
+            }
+            | KeyEvent {
+                code: KeyCode::Up,
+                modifiers: KeyModifiers::NONE,
+            } => {
                 self.files.lock().unwrap().prev_selected();
             }
-            Key::Left | Key::Right | Key::Char('h') | Key::Char('l') => {
+            KeyEvent {
+                code: KeyCode::Char('h'),
+                modifiers: KeyModifiers::NONE,
+            }
+            | KeyEvent {
+                code: KeyCode::Char('l'),
+                modifiers: KeyModifiers::NONE,
+            }
+            | KeyEvent {
+                code: KeyCode::Left,
+                modifiers: KeyModifiers::NONE,
+            }
+            | KeyEvent {
+                code: KeyCode::Right,
+                modifiers: KeyModifiers::NONE,
+            } => {
                 self.files.lock().unwrap().toggle_selected();
             }
             _ => {}

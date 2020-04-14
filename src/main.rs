@@ -11,47 +11,73 @@ mod rftp;
 mod user_message;
 mod utils;
 
+use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 use events::{Event, EventListener};
 use rftp::Rftp;
 use std::error::Error;
-use std::io::stdout;
-use termion::raw::IntoRawMode;
-use termion::screen::AlternateScreen;
-use tui::backend::TermionBackend;
+use std::io::{stdout, Stdout, Write};
+use tui::{backend::CrosstermBackend, Terminal};
 
 fn main() {
-    run().unwrap_or_else(|err| {
+    run_app().unwrap_or_else(|err| {
         eprintln!("Error: {}.", err);
         std::process::exit(1);
     });
 }
 
-/// Run the program.
-fn run() -> Result<(), Box<dyn Error>> {
-    let mut rftp = Rftp::new()?;
+/// Run the app.
+fn run_app() -> Result<(), Box<dyn Error>> {
+    let app = App::new()?;
+    app.run()?;
+    Ok(())
+}
 
-    let mut terminal = {
-        let stdout = stdout().into_raw_mode()?;
-        let stdout = AlternateScreen::from(stdout);
-        let backend = TermionBackend::new(stdout);
-        tui::Terminal::new(backend)?
-    };
-    let _hide_cursor = termion::cursor::HideCursor::from(stdout());
+struct App {
+    terminal: Terminal<CrosstermBackend<Stdout>>,
+    rftp: Rftp,
+}
 
-    let mut event_listener = EventListener::new(30.0);
-
-    while rftp.is_alive() {
-        match event_listener.get_next_event() {
-            Ok(Event::Input(key)) => {
-                rftp.on_event(key)?;
-            }
-            Ok(Event::Tick) => {
-                rftp.tick()?;
-                terminal.draw(|frame| rftp.draw(frame))?;
-            }
-            _ => (),
-        }
+impl App {
+    /// Create the `Rftp` and `Terminal` structs.
+    pub fn new() -> Result<App, Box<dyn Error>> {
+        let rftp = Rftp::new()?;
+        let terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
+        Ok(App { terminal, rftp })
     }
 
-    Ok(())
+    /// Run the program.
+    fn run(mut self) -> Result<(), Box<dyn Error>> {
+        let rftp = &mut self.rftp;
+        let terminal = &mut self.terminal;
+
+        crossterm::terminal::enable_raw_mode()?;
+        crossterm::execute!(terminal.backend_mut(), EnterAlternateScreen)?;
+
+        terminal.hide_cursor()?;
+
+        let mut event_listener = EventListener::new(30.0);
+
+        while rftp.is_alive() {
+            match event_listener.get_next_event() {
+                Ok(Event::Input(key)) => {
+                    rftp.on_event(key)?;
+                }
+                Ok(Event::Tick) => {
+                    rftp.tick()?;
+                    terminal.draw(|frame| rftp.draw(frame))?;
+                }
+                Err(_) => (),
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl Drop for App {
+    fn drop(&mut self) {
+        crossterm::execute!(self.terminal.backend_mut(), LeaveAlternateScreen).unwrap();
+        crossterm::terminal::disable_raw_mode().unwrap();
+        self.terminal.show_cursor().unwrap();
+    }
 }
