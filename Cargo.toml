@@ -13,7 +13,7 @@ keywords = ["sftp", "ssh", "scp"]
 [dependencies]
 ssh2 = "0.8.0"
 clap = "2.33.0"
-tui = {git = "https://github.com/fdehau/tui-rs", branch = "master"}
+tui = "0.9.0"
 termion = "1.5.5"
 textwrap = "0.11.0"
 dirs = "2.0.2"
