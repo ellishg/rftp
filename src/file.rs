@@ -15,6 +15,10 @@ use tui::{
     widgets::{Block, Borders, List, ListState, Text},
 };
 
+const FILELIST_FILE_COLOR: Color = Color::Green;
+const FILELIST_DIRECTORY_COLOR: Color = Color::Blue;
+const FILELIST_HIGHLIGHT_COLOR: Color = Color::Yellow;
+
 #[derive(Clone, PartialEq, Eq, Ord)]
 pub enum LocalFileEntry {
     File(PathBuf),
@@ -142,17 +146,17 @@ pub trait FileEntry {
     fn to_text(&self) -> Text {
         if self.is_parent() {
             // TODO: We can either use the emoji "⬅" or ".." for the parent directory.
+            // Text::Styled(Cow::Borrowed(".."), Style::default().fg(Color::Red))
             Text::raw("⬅")
-        // Text::Styled(Cow::Borrowed(".."), Style::default().fg(Color::Red))
         } else if self.is_file() {
             Text::styled(
                 self.file_name_lossy().unwrap(),
-                Style::default().fg(Color::LightGreen),
+                Style::default().fg(FILELIST_FILE_COLOR),
             )
         } else if self.is_dir() {
             Text::styled(
                 format!("{}/", self.file_name_lossy().unwrap()),
-                Style::default().fg(Color::Blue),
+                Style::default().fg(FILELIST_DIRECTORY_COLOR),
             )
         } else {
             unreachable!()
@@ -480,7 +484,7 @@ impl FileList {
         let generate_list = |title, items| {
             List::new(items)
                 .block(Block::default().title(title).borders(Borders::ALL))
-                // .highlight_style(Style::default().bg(Color::Yellow))
+                .highlight_style(Style::default().bg(FILELIST_HIGHLIGHT_COLOR))
                 .highlight_symbol(">>")
         };
 

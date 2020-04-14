@@ -12,6 +12,7 @@ use tui::{
 
 /// The max age of any item in the history.
 const HISTORY_MAX_AGE: Duration = Duration::from_secs(5);
+const PROGRESSBAR_COLOR: Color = Color::LightBlue;
 
 pub struct Progress {
     title: String,
@@ -200,7 +201,7 @@ impl Progress {
             )
         };
         let gauge = Gauge::default()
-            .style(Style::default().fg(Color::Yellow))
+            .style(Style::default().fg(PROGRESSBAR_COLOR))
             .label(&label)
             .ratio(self.get_ratio());
 
