@@ -17,7 +17,7 @@ use tui::{
 
 const FILELIST_FILE_COLOR: Color = Color::Green;
 const FILELIST_DIRECTORY_COLOR: Color = Color::Blue;
-const FILELIST_HIGHLIGHT_COLOR: Color = Color::Yellow;
+const FILELIST_HIGHLIGHT_COLOR: Color = Color::LightMagenta;
 
 #[derive(Clone, PartialEq, Eq, Ord)]
 pub enum LocalFileEntry {
