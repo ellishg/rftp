@@ -1,4 +1,4 @@
-use crate::utils::{bitrate_to_string, duration_to_string};
+use crate::utils::{bitrate_to_string, bytes_to_string, duration_to_string};
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -182,7 +182,13 @@ impl Progress {
             .get_eta()
             .map(|eta| duration_to_string(eta))
             .unwrap_or("??:??".to_string());
-        let info = format!("{} {} ETA", bitrate_to_string(bitrate), eta);
+        let info = format!(
+            "{}/{}  {}  {} ETA",
+            bytes_to_string(self.bytes_sent.load(Ordering::Relaxed)),
+            bytes_to_string(self.total_bytes),
+            bitrate_to_string(bitrate),
+            eta
+        );
         let width = frame.size().width as usize;
         let label = if info.len() + 5 >= width {
             format!(
@@ -217,7 +223,7 @@ mod tests {
 
     #[test]
     fn test_draw_progress() {
-        let mut terminal = Terminal::new(TestBackend::new(50, 8)).unwrap();
+        let mut terminal = Terminal::new(TestBackend::new(60, 8)).unwrap();
 
         terminal
             .draw(|mut frame| {
@@ -258,14 +264,14 @@ mod tests {
         assert_eq!(
             buffer_without_style(terminal.backend().buffer()),
             Buffer::with_lines(vec![
-                "                                                  ",
-                "                                                  ",
-                "                                                  ",
-                "                                                  ",
-                "just_started.txt                 0 bit/s ??:?? ETA",
-                "this_is_a_really_long_filename.t 0 bit/s ??:?? ETA",
-                "with_history.dat            131.1 Kbit/s 01:01 ETA",
-                "finished.jpg                     0 bit/s 00:00 ETA",
+                "                                                            ",
+                "                                                            ",
+                "                                                            ",
+                "                                                            ",
+                "just_started.txt               0 B/100 B  0 bit/s  ??:?? ETA",
+                "this_is_a_really_long_filename 0 B/100 B  0 bit/s  ??:?? ETA",
+                "with_history.dat         0 B/1.0 MB  131.1 Kbit/s  01:01 ETA",
+                "finished.jpg                 100 B/100 B  0 bit/s  00:00 ETA",
             ])
         );
     }

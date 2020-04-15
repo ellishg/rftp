@@ -48,6 +48,18 @@ pub fn bitrate_to_string(rate: u64) -> String {
     }
 }
 
+pub fn bytes_to_string(num_bytes: u64) -> String {
+    if num_bytes < 1_000 {
+        format!("{} B", num_bytes)
+    } else if num_bytes < 1_000_000 {
+        format!("{:.1} KB", num_bytes as f64 / 1e3)
+    } else if num_bytes < 1_000_000_000 {
+        format!("{:.1} MB", num_bytes as f64 / 1e6)
+    } else {
+        format!("{:.1} GB", num_bytes as f64 / 1e9)
+    }
+}
+
 #[allow(dead_code)]
 /// Return a `Buffer` that is the same, but with the default style.
 pub fn buffer_without_style(buffer: &Buffer) -> Buffer {
@@ -87,5 +99,13 @@ mod tests {
         assert_eq!(bitrate_to_string(1e3 as u64), "1.0 Kbit/s".to_string());
         assert_eq!(bitrate_to_string(3e6 as u64), "3.0 Mbit/s".to_string());
         assert_eq!(bitrate_to_string(7e9 as u64), "7.0 Gbit/s".to_string());
+    }
+
+    #[test]
+    fn test_bytes() {
+        assert_eq!(bytes_to_string(849), "849 B".to_string());
+        assert_eq!(bytes_to_string(3e3 as u64), "3.0 KB".to_string());
+        assert_eq!(bytes_to_string(6e6 as u64), "6.0 MB".to_string());
+        assert_eq!(bytes_to_string(2e9 as u64), "2.0 GB".to_string());
     }
 }
