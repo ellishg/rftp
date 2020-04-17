@@ -33,6 +33,7 @@ impl Rftp {
                 (@arg destination: +required)
                 (@arg port: -p --port +takes_value)
                 (@arg username: -u --user +takes_value)
+                (@arg verbose: -v --verbose)
         )
         .get_matches();
 
@@ -49,7 +50,8 @@ impl Rftp {
             }
         };
         let port = matches.value_of("port");
-        let session = create_session(destination, &username, port)?;
+        let verbose = matches.is_present("verbose");
+        let session = create_session(destination, &username, port, verbose)?;
         let sftp = session.sftp()?;
 
         let show_hidden_files = false;

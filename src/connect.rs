@@ -11,13 +11,20 @@ pub fn create_session(
     destination: &str,
     username: &str,
     port: Option<&str>,
+    verbose: bool,
 ) -> Result<ssh2::Session, Box<dyn Error>> {
     let tcp = if let Some(port) = port {
         let port = port
             .parse::<u16>()
             .map_err(|_| "unable to parse port number")?;
+        if verbose {
+            println!("Attempting to connect to {}:{}.", destination, port);
+        }
         TcpStream::connect((destination, port))?
     } else {
+        if verbose {
+            println!("Attempting to connect to {}.", destination);
+        }
         TcpStream::connect(destination).unwrap_or(TcpStream::connect((destination, 22))?)
     };
     let port = tcp.peer_addr()?.port();
@@ -28,8 +35,12 @@ pub fn create_session(
     session.set_tcp_stream(tcp);
     session.handshake()?;
 
-    let session = authenticate_host(session, destination, port)?;
+    let session = authenticate_host(session, destination, port, verbose)?;
     let session = authenticate_session(session, username)?;
+
+    if verbose {
+        println!("Connected to host {}@{}:{}.", username, destination, port);
+    }
 
     Ok(session)
 }
@@ -39,6 +50,7 @@ fn authenticate_host(
     session: ssh2::Session,
     destination: &str,
     port: u16,
+    verbose: bool,
 ) -> Result<ssh2::Session, Box<dyn Error>> {
     let mut known_hosts = session.known_hosts()?;
     let known_hosts_path = home_dir()
@@ -49,7 +61,15 @@ fn authenticate_host(
         .host_key()
         .ok_or("unable to get host key from session")?;
     match known_hosts.check_port(destination, port, key) {
-        ssh2::CheckResult::Match => Ok(session),
+        ssh2::CheckResult::Match => {
+            if verbose {
+                println!(
+                    "Host key for {}:{} matches entry in {:?}.",
+                    destination, port, known_hosts_path
+                );
+            }
+            Ok(session)
+        }
         ssh2::CheckResult::NotFound => {
             let fingerprint = session
                 .host_key_hash(ssh2::HashType::Sha256)
@@ -65,8 +85,8 @@ fn authenticate_host(
                 .ok_or("unable to get fingerprint of host")?;
 
             println!(
-                "The host key for {} was not found in {:?}.",
-                destination, known_hosts_path
+                "No matching host key for {}:{} was not found in {:?}.",
+                destination, port, known_hosts_path
             );
             println!("Fingerprint: {}", fingerprint);
             print!("Would you like to add it (yes/no)? ");
@@ -81,8 +101,8 @@ fn authenticate_host(
                     Ok(session)
                 }
                 _ => Err(Box::from(format!(
-                    "the authenticity of host {} cannot be established",
-                    destination
+                    "the authenticity of host {}:{} cannot be established",
+                    destination, port
                 ))),
             }
         }
