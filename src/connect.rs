@@ -106,8 +106,8 @@ fn authenticate_session(
 
         let auth_methods: HashSet<&str> = session.auth_methods(username)?.split(",").collect();
 
-        if !session.authenticated() && auth_methods.contains("publickey") {
-            session.userauth_agent(username)?;
+        if auth_methods.contains("publickey") {
+            session.userauth_agent(username).ok();
         }
 
         if !session.authenticated() && auth_methods.contains("password") {
