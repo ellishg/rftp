@@ -45,7 +45,9 @@ fn authenticate_host(
         .ok_or("unable to find home directory")?
         .join(".ssh/known_hosts");
     known_hosts.read_file(&known_hosts_path, ssh2::KnownHostFileKind::OpenSSH)?;
-    let (key, key_type) = session.host_key().ok_or("unable to get host key")?;
+    let (key, key_type) = session
+        .host_key()
+        .ok_or("unable to get host key from session")?;
     match known_hosts.check_port(destination, port, key) {
         ssh2::CheckResult::Match => Ok(session),
         ssh2::CheckResult::NotFound => {
@@ -99,6 +101,8 @@ fn authenticate_session(
     session: ssh2::Session,
     username: &str,
 ) -> Result<ssh2::Session, Box<dyn Error>> {
+    let mut has_entered_password = false;
+
     for _ in 0..3 {
         if session.authenticated() {
             break;
@@ -110,9 +114,10 @@ fn authenticate_session(
             session.userauth_agent(username).ok();
         }
 
-        if !session.authenticated() && auth_methods.contains("password") {
-            let password = prompt_password_stdout("🔐 Password: ")?;
-            session.userauth_password(username, &password).ok();
+        if !has_entered_password && !session.authenticated() && auth_methods.contains("password") {
+            authenticate_with_password(&session, username)?;
+            // We only want to prompt the user for a password for one round.
+            has_entered_password = true;
         }
 
         // if !session.authenticated() && auth_methods.contains("keyboard-interactive") {
@@ -153,4 +158,20 @@ fn authenticate_session(
     } else {
         Err(Box::from("unable to authenticate session"))
     }
+}
+
+/// Attempt to authenticate the session by prompting the user for a password three times.
+fn authenticate_with_password(
+    session: &ssh2::Session,
+    username: &str,
+) -> Result<(), Box<dyn Error>> {
+    for _ in 0..3 {
+        let password = prompt_password_stdout("🔐 Password: ")?;
+        if session.userauth_password(username, &password).is_ok() {
+            return Ok(());
+        } else {
+            eprintln!("❌ Permission denied, please try again.");
+        }
+    }
+    Err(Box::from("unable to authenticate session"))
 }
