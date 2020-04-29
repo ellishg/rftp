@@ -1,5 +1,5 @@
 use crate::progress::Progress;
-use crate::utils::get_remote_home_dir;
+use crate::utils::{bytes_to_string, get_remote_home_dir};
 
 use ssh2;
 use std::borrow::Cow;
@@ -21,7 +21,7 @@ const FILELIST_HIGHLIGHT_COLOR: Color = Color::LightMagenta;
 
 #[derive(Clone, PartialEq, Eq, Ord)]
 pub enum LocalFileEntry {
-    File(PathBuf),
+    File(PathBuf, u64),
     Directory(PathBuf),
     Parent(PathBuf),
 }
@@ -143,14 +143,25 @@ pub trait FileEntry {
     }
 
     /// Returns the text of this entry for displaying to the user.
-    fn to_text(&self) -> Text {
+    fn to_text(&self, width: usize) -> Text {
         if self.is_parent() {
             // TODO: We can either use the emoji "⬅" or ".." for the parent directory.
             // Text::Styled(Cow::Borrowed(".."), Style::default().fg(Color::Red))
             Text::raw("⬅")
         } else if self.is_file() {
+            let file_len_string = self
+                .len()
+                .map(|len| bytes_to_string(len))
+                .unwrap_or(String::from(""));
+            let width = width - (file_len_string.len() + 1);
             Text::styled(
-                self.file_name_lossy().unwrap(),
+                format!(
+                    "{name:min_width$.max_width$} {len}",
+                    name = self.file_name_lossy().unwrap(),
+                    min_width = width,
+                    max_width = width,
+                    len = file_len_string
+                ),
                 Style::default().fg(FILELIST_FILE_COLOR),
             )
         } else if self.is_dir() {
@@ -167,7 +178,7 @@ pub trait FileEntry {
 impl FileEntry for LocalFileEntry {
     fn path(&self) -> &Path {
         match self {
-            LocalFileEntry::File(path) => path,
+            LocalFileEntry::File(path, _) => path,
             LocalFileEntry::Directory(path) => path,
             LocalFileEntry::Parent(path) => path,
         }
@@ -175,7 +186,7 @@ impl FileEntry for LocalFileEntry {
 
     fn is_dir(&self) -> bool {
         match self {
-            LocalFileEntry::File(_) => false,
+            LocalFileEntry::File(_, _) => false,
             LocalFileEntry::Directory(_) => true,
             LocalFileEntry::Parent(_) => true,
         }
@@ -183,7 +194,7 @@ impl FileEntry for LocalFileEntry {
 
     fn is_file(&self) -> bool {
         match self {
-            LocalFileEntry::File(_) => true,
+            LocalFileEntry::File(_, _) => true,
             LocalFileEntry::Directory(_) => false,
             LocalFileEntry::Parent(_) => false,
         }
@@ -191,7 +202,7 @@ impl FileEntry for LocalFileEntry {
 
     fn is_parent(&self) -> bool {
         match self {
-            LocalFileEntry::File(_) => false,
+            LocalFileEntry::File(_, _) => false,
             LocalFileEntry::Directory(_) => false,
             LocalFileEntry::Parent(_) => true,
         }
@@ -199,7 +210,7 @@ impl FileEntry for LocalFileEntry {
 
     fn len(&self) -> Option<u64> {
         match self {
-            LocalFileEntry::File(path) => metadata(path).ok().map(|metadata| metadata.len()),
+            LocalFileEntry::File(_, len) => Some(*len),
             LocalFileEntry::Directory(_) => None,
             LocalFileEntry::Parent(_) => None,
         }
@@ -279,7 +290,8 @@ impl FileList {
         for entry in read_dir(&self.local_directory)? {
             let path = entry?.path();
             if path.is_file() {
-                self.local_entries.push(LocalFileEntry::File(path));
+                let len = metadata(&path)?.len();
+                self.local_entries.push(LocalFileEntry::File(path, len));
             } else {
                 self.local_entries.push(LocalFileEntry::Directory(path));
             }
@@ -489,20 +501,22 @@ impl FileList {
         };
 
         let title = format!("Local: {:?}", self.get_local_working_path());
+        let width = (local_rect.width - 4) as usize;
         let items: Vec<_> = self
             .local_entries
             .iter()
-            .map(|entry| entry.to_text())
+            .map(|entry| entry.to_text(width))
             .collect();
         let mut state = self.get_local_selected_index();
         let list = generate_list(&title, items.into_iter());
         frame.render_stateful_widget(list, local_rect, &mut state);
 
         let title = format!("Remote: {:?}", self.get_remote_working_path());
+        let width = (remote_rect.width - 4) as usize;
         let items: Vec<_> = self
             .remote_entries
             .iter()
-            .map(|entry| entry.to_text())
+            .map(|entry| entry.to_text(width))
             .collect();
         let mut state = self.get_remote_selected_index();
         let list = generate_list(&title, items.into_iter());
@@ -535,14 +549,14 @@ mod tests {
             remote_directory: PathBuf::from("home/files"),
             local_entries: vec![
                 LocalFileEntry::Parent(PathBuf::from("/a/b/c/..")),
-                LocalFileEntry::File(PathBuf::from("/a/b/c/myfile.txt")),
-                LocalFileEntry::File(PathBuf::from("/a/b/c/myotherfile.dat")),
+                LocalFileEntry::File(PathBuf::from("/a/b/c/myfile.txt"), 30_000),
+                LocalFileEntry::File(PathBuf::from("/a/b/c/myotherfile.dat"), 128),
                 LocalFileEntry::Directory(PathBuf::from("/a/b/c/important")),
             ],
             remote_entries: vec![
                 RemoteFileEntry::Parent(PathBuf::from("home/files/..")),
-                RemoteFileEntry::File(PathBuf::from("home/files/pic.png"), 128),
-                RemoteFileEntry::File(PathBuf::from("home/files/movie.mkv"), 512),
+                RemoteFileEntry::File(PathBuf::from("home/files/pic.png"), 55_000),
+                RemoteFileEntry::File(PathBuf::from("home/files/movie.mkv"), 123_000_000),
                 RemoteFileEntry::Directory(PathBuf::from("home/files/games")),
                 RemoteFileEntry::Directory(PathBuf::from("home/files/trash")),
             ],
@@ -563,8 +577,8 @@ mod tests {
             Buffer::with_lines(vec![
                 "┌Local: \"/a/b/c\"────────┐┌Remote: \"home/files\"───┐",
                 "│⬅                      ││  ⬅                    │",
-                "│myfile.txt             ││  pic.png              │",
-                "│myotherfile.dat        ││>>movie.mkv            │",
+                "│myfile.txt    30.0 KB  ││  pic.png       55.0 KB│",
+                "│myotherfile.dat 128 B  ││>>movie.mkv    123.0 MB│",
                 "│important/             ││  games/               │",
                 "│                       ││  trash/               │",
                 "│                       ││                       │",
