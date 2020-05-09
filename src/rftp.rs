@@ -8,12 +8,13 @@ use std::env;
 use std::error::Error;
 // use std::io::Write;
 use std::iter::Iterator;
-use tokio::net::TcpStream;
+use std::net::{ToSocketAddrs, TcpStream};
 // use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use termion::event::Key;
+use smol::Async;
 
 pub struct Rftp {
     session: async_ssh2::Session,
@@ -249,18 +250,19 @@ async fn create_session(
     username: &str,
     port: Option<&str>,
 ) -> Result<async_ssh2::Session, Box<dyn Error>> {
+    let mut session = async_ssh2::Session::new()?;
+
     let tcp = if let Some(port) = port {
         let port = port
             .parse::<u16>()
             .map_err(|_| "unable to parse port number")?;
-        TcpStream::connect((destination, port)).await?
+        Async::<TcpStream>::connect(destination.to_owned() + ":" + &port.to_string()).await?
     } else {
-        TcpStream::connect(destination)
+        Async::<TcpStream>::connect(destination)
             .await
-            .unwrap_or(TcpStream::connect((destination, 22)).await?)
+            .unwrap_or(Async::<TcpStream>::connect(destination.to_owned() + ":22").await?)
     };
 
-    let mut session = async_ssh2::Session::new()?;
     session.set_timeout(10000);
     session.set_compress(true);
     session.set_tcp_stream(tcp);
