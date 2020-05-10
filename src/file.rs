@@ -3,7 +3,7 @@ use async_ssh2;
 use std::error::Error;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
+use futures::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
@@ -59,7 +59,7 @@ pub async fn download(
 ) -> Result<(), Box<dyn Error>> {
     assert!(source.is_file(), "Source must be a file!");
     let source = sftp.open(&source.path()).await?;
-    let dest = tokio::fs::File::create(dest).await?;
+    let dest = async_std::fs::File::create(dest.as_ref()).await?;
     let mut reader = BufReader::new(source);
     let mut writer = BufWriter::new(dest);
     let mut buffer = vec![0; CHUNK_SIZE];
@@ -74,7 +74,7 @@ pub async fn download(
         }
     }
 
-    writer.shutdown().await?;
+    writer.close().await?;
     progress.finish();
     Ok(())
 }
@@ -88,7 +88,7 @@ pub async fn upload(
     progress: &Progress,
 ) -> Result<(), Box<dyn Error>> {
     assert!(source.is_file(), "Source must be a file!");
-    let source = tokio::fs::File::open(source.path()).await?;
+    let source = async_std::fs::File::open(source.path()).await?;
     let dest = sftp.create(dest.as_ref()).await?;
     let mut reader = BufReader::new(source);
     let mut writer = BufWriter::new(dest);

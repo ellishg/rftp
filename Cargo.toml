@@ -11,9 +11,12 @@ keywords = ["sftp", "ssh", "scp"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-async-ssh2 = { version = "0.1", git = "https://github.com/spebern/async-ssh2.git", branch = "tokio-stream"}
+async-ssh2 = { git = "https://github.com/spebern/async-ssh2.git" }
+smol = "0.1"
 clap = "2.33.0"
-tokio = { version = "0.2", git = "https://github.com/spebern/tokio", features = ["full"] }
+tokio = { version = "0.2", features = ["full"] }
 tui = "0.8.0"
 termion = "1.5.5"
 textwrap = "0.11.0"
+futures = "0.3.4"
+async-std = "1.5.0"
