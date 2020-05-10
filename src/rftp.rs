@@ -8,13 +8,13 @@ use std::env;
 use std::error::Error;
 // use std::io::Write;
 use std::iter::Iterator;
-use std::net::{ToSocketAddrs, TcpStream};
+use std::net::TcpStream;
 // use std::path::Path;
+use smol::Async;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use termion::event::Key;
-use smol::Async;
 
 pub struct Rftp {
     session: async_ssh2::Session,
@@ -265,7 +265,7 @@ async fn create_session(
 
     session.set_timeout(10000);
     session.set_compress(true);
-    session.set_tcp_stream(tcp);
+    session.set_tcp_stream(tcp)?;
     session.handshake().await?;
 
     let mut auth_methods = session.auth_methods(username).await?.split(",");

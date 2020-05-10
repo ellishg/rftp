@@ -18,7 +18,7 @@ checksum = "b585a98a234c46fc563103e9278c9391fde1f4e6850334da895d27edb9580f62"
 [[package]]
 name = "async-ssh2"
 version = "0.1.0"
-source = "git+https://github.com/spebern/async-ssh2.git#cd20f50c34fd43d60b53dea130a1fa2707ebddca"
+source = "git+https://github.com/spebern/async-ssh2.git#16ed86ee1184237fb0b94118ecd17b72110be614"
 dependencies = [
  "futures",
  "piper",
@@ -610,18 +610,18 @@ dependencies = [
 
 [[package]]
 name = "pin-project"
-version = "0.4.13"
+version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82c3bfbfb5bb42f99498c7234bbd768c220eb0cea6818259d0d18a1aa3d2595d"
+checksum = "2bbe07cee13ca15295ce93a5b1094d63e0420603e91ffda4f86d4478988916f2"
 dependencies = [
  "pin-project-internal",
 ]
 
 [[package]]
 name = "pin-project-internal"
-version = "0.4.13"
+version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ccbf6449dcfb18562c015526b085b8df1aa3cdab180af8ec2ebd300a3bd28f63"
+checksum = "1b789ec51a10e5a985a9863ef8791412523334d6240fab2cf40dd9fd47496dc6"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -919,9 +919,9 @@ checksum = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"
 
 [[package]]
 name = "wepoll-binding"
-version = "2.0.0"
+version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "720cc52662740f7097c7bbc15f7906e4d3f6e64e5ec70e84eb4690b70ce1afc5"
+checksum = "7511014d92edaa2cba607fd6dc62974915bebc3e16f91f911a4bb240b4a3a68c"
 dependencies = [
  "bitflags",
  "wepoll-sys",

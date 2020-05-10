@@ -1,9 +1,9 @@
 use crate::progress::Progress;
 use async_ssh2;
+use futures::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 use std::error::Error;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use futures::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
