@@ -22,6 +22,7 @@ rftp <destination> -u <username> -p <port>
 | Arrow keys<br>**h**/**j**/**k**/**l** | Navigate the files                |
 | Enter      | Enter into the selected directory |
 | Spacebar   | Download/Upload the selected file |
+| **z**      | Show/hide hidden files            |
 | **q**      | Quit                              |
 | **Q**      | Force quit                        |
 | **?**      | Print help message                |
@@ -30,4 +31,4 @@ rftp <destination> -u <username> -p <port>
 
 - [ ] Create new directories
 - [ ] Upload/download directories recursively
-- [ ] Show/hide invisible files
+- [x] Show/hide invisible files

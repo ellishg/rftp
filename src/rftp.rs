@@ -225,6 +225,19 @@ impl Rftp {
                 self.files.lock().unwrap().toggle_selected();
             }
             KeyEvent {
+                code: KeyCode::Char('z'),
+                modifiers: KeyModifiers::NONE,
+            } => {
+                let show_hidden_files = !self.show_hidden_files.fetch_xor(true, Ordering::Relaxed);
+                self.user_message.report(&format!(
+                    "{} hidden files.",
+                    if show_hidden_files { "Show" } else { "Hide" }
+                ));
+                let mut files = self.files.lock().unwrap();
+                files.fetch_local_files(show_hidden_files)?;
+                files.fetch_remote_files(&self.sftp, show_hidden_files)?;
+            }
+            KeyEvent {
                 code: KeyCode::Char('?'),
                 modifiers: KeyModifiers::NONE,
             } => {
@@ -234,6 +247,7 @@ impl Rftp {
                     h/j/k/l         Navigate the files.\n\
                     Enter           Enter the selected directory.\n\
                     Spacebar        Download/Upload the selected file.\n\
+                    z               Show/hide hidden files.
                     q               Quit.\n\
                     Q               Force quit.\n\
                     ?               Print this help message.",
