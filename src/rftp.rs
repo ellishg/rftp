@@ -242,14 +242,14 @@ impl Rftp {
                 modifiers: KeyModifiers::NONE,
             } => {
                 self.user_message.report(&format!(
-                    "Controls for rftp version {}.\n\
-                    ------------------------------------------------------------\n\
-                    h/j/k/l         Navigate the files.\n\
-                    Enter           Enter the selected directory.\n\
-                    Spacebar        Download/Upload the selected file.\n\
+                    "Controls for rftp version {}.
+                    ------------------------------------------------------------
+                    h/j/k/l         Navigate the files.
+                    Enter           Enter the selected directory.
+                    Spacebar        Download/Upload the selected file.
                     z               Show/hide hidden files.
-                    q               Quit.\n\
-                    Q               Force quit.\n\
+                    q               Quit.
+                    Q               Force quit.
                     ?               Print this help message.",
                     clap::crate_version!()
                 ));
