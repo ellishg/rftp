@@ -62,6 +62,9 @@ impl Rftp {
             show_hidden_files,
         )?));
 
+        let user_message = UserMessage::new();
+        user_message.report("Press \"?\" for help.");
+
         Ok(Rftp {
             session,
             sftp: Arc::new(sftp),
@@ -69,7 +72,7 @@ impl Rftp {
             is_alive: true,
             progress_bars: vec![],
             show_hidden_files: Arc::new(AtomicBool::new(show_hidden_files)),
-            user_message: Arc::new(UserMessage::new()),
+            user_message: Arc::new(user_message),
         })
     }
 
@@ -220,6 +223,22 @@ impl Rftp {
                 modifiers: KeyModifiers::NONE,
             } => {
                 self.files.lock().unwrap().toggle_selected();
+            }
+            KeyEvent {
+                code: KeyCode::Char('?'),
+                modifiers: KeyModifiers::NONE,
+            } => {
+                self.user_message.report(&format!(
+                    "Controls for rftp version {}.\n\
+                    ------------------------------------------------------------\n\
+                    h/j/k/l         Navigate the files.\n\
+                    Enter           Enter the selected directory.\n\
+                    Spacebar        Download/Upload the selected file.\n\
+                    q               Quit.\n\
+                    Q               Force quit.\n\
+                    ?               Print this help message.",
+                    clap::crate_version!()
+                ));
             }
             _ => {}
         };

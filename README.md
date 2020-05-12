@@ -24,3 +24,10 @@ rftp <destination> -u <username> -p <port>
 | Spacebar   | Download/Upload the selected file |
 | **q**      | Quit                              |
 | **Q**      | Force quit                        |
+| **?**      | Print help message                |
+
+## TODO
+
+[ ] Create new directories
+[ ] Upload/download directories recursively
+[ ] Show/hide invisible files
