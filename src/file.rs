@@ -1,10 +1,9 @@
 use crate::progress::Progress;
-use crate::utils::{bytes_to_string, get_remote_home_dir};
+use crate::utils::{bytes_to_string, get_remote_home_dir, Result};
 
 use ssh2;
 use std::borrow::Cow;
 use std::env;
-use std::error::Error;
 use std::fs::{canonicalize, metadata, read_dir, File};
 use std::io;
 use std::io::{Read, Write};
@@ -264,7 +263,7 @@ impl FileList {
         session: &ssh2::Session,
         sftp: &ssh2::Sftp,
         keep_hidden_files: bool,
-    ) -> Result<Self, Box<dyn Error>> {
+    ) -> Result<Self> {
         let local_path = env::current_dir()?;
         let remote_path = get_remote_home_dir(session).unwrap_or(PathBuf::from("./"));
 

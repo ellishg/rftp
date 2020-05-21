@@ -14,9 +14,9 @@ mod utils;
 use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 use events::{Event, EventListener};
 use rftp::Rftp;
-use std::error::Error;
 use std::io::{stdout, Stdout, Write};
 use tui::{backend::CrosstermBackend, Terminal};
+use utils::Result;
 
 fn main() {
     run_app().unwrap_or_else(|err| {
@@ -26,7 +26,7 @@ fn main() {
 }
 
 /// Run the app.
-fn run_app() -> Result<(), Box<dyn Error>> {
+fn run_app() -> Result<()> {
     let app = App::new()?;
     app.run()?;
     Ok(())
@@ -39,14 +39,14 @@ struct App {
 
 impl App {
     /// Create the `Rftp` and `Terminal` structs.
-    pub fn new() -> Result<App, Box<dyn Error>> {
+    pub fn new() -> Result<App> {
         let rftp = Rftp::new()?;
         let terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
         Ok(App { terminal, rftp })
     }
 
     /// Run the program.
-    fn run(mut self) -> Result<(), Box<dyn Error>> {
+    fn run(mut self) -> Result<()> {
         let rftp = &mut self.rftp;
         let terminal = &mut self.terminal;
 

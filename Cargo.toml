@@ -11,12 +11,13 @@ keywords = ["sftp", "ssh", "scp"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ssh2 = "0.8.0"
-clap = "2.33.0"
-crossterm = "0.17.3"
-tui = {version = "0.9.0", default-features = false, features = ['crossterm']}
-textwrap = "0.11.0"
-dirs = "2.0.2"
-crossbeam-channel = "0.4.2"
-base64 = "0.12.0"
-rpassword = "4.0.5"
+ssh2 = "0.8"
+clap = "2.33"
+crossterm = "0.17"
+tui = {version = "0.9", default-features = false, features = ['crossterm']}
+textwrap = "0.11"
+dirs = "2.0"
+crossbeam-channel = "0.4"
+base64 = "0.12"
+rpassword = "4.0"
+thiserror = "1.0"

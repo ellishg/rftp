@@ -2,11 +2,11 @@ use crate::connect::create_session;
 use crate::file::*;
 use crate::progress::Progress;
 use crate::user_message::UserMessage;
+use crate::utils::Result;
 
 use clap;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ssh2;
-use std::error::Error;
 use std::iter::Iterator;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -24,7 +24,7 @@ pub struct Rftp {
 }
 
 impl Rftp {
-    pub fn new() -> Result<Self, Box<dyn Error>> {
+    pub fn new() -> Result<Self> {
         let matches = clap::clap_app!(
             rftp =>
                 (version: clap::crate_version!())
@@ -77,13 +77,13 @@ impl Rftp {
     }
 
     /// Work that is done on every "tick".
-    pub fn tick(&mut self) -> Result<(), Box<dyn Error>> {
+    pub fn tick(&mut self) -> Result<()> {
         self.progress_bars.retain(|p| !p.is_finished());
         Ok(())
     }
 
     /// Work that is done on every key press.
-    pub fn on_event(&mut self, key: KeyEvent) -> Result<(), Box<dyn Error>> {
+    pub fn on_event(&mut self, key: KeyEvent) -> Result<()> {
         match key {
             KeyEvent {
                 code: KeyCode::Char('Q'),

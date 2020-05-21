@@ -1,11 +1,56 @@
-use std::error::Error;
+use ssh2;
 use std::io::Read;
 use std::path::PathBuf;
 use std::time::Duration;
+use thiserror::Error;
 use tui::{buffer::Buffer, style::Style};
 
+pub type Result<T> = std::result::Result<T, ErrorKind>;
+
+#[derive(Error, Debug)]
+pub enum ErrorKind {
+    #[error("unable to authenticate session for {0}")]
+    UserAuthenticationError(String),
+
+    #[error("the authenticity of {0}:{1} cannot be established")]
+    HostAuthenticationError(String, u16),
+
+    #[error("unable to check known hosts")]
+    HostFileCheckError,
+
+    #[error("unable to parse port number")]
+    InvalidPortNumber,
+
+    #[error("possible person in the middle attack")]
+    MismatchedFingerprint,
+
+    #[error("unable to find home directory")]
+    UnableToFindHomeDirectory,
+
+    #[error("unable to find host key from session")]
+    HostKeyNotFound,
+
+    #[error("unable to find fingerprint of host")]
+    HostFingerprintNotFound,
+
+    #[error("channel closed with exit status {0}")]
+    Ssh2ChannelClosed(i32),
+
+    #[error(transparent)]
+    Ssh2Error(#[from] ssh2::Error),
+
+    #[error(transparent)]
+    CrosstermError(#[from] crossterm::ErrorKind),
+
+    #[error(transparent)]
+    IOError(#[from] std::io::Error),
+
+    #[error(transparent)]
+    VarError(#[from] std::env::VarError),
+}
+
 /// Return the path to the host home directory.
-pub fn get_remote_home_dir(session: &ssh2::Session) -> Result<PathBuf, Box<dyn Error>> {
+pub fn get_remote_home_dir(session: &ssh2::Session) -> Result<PathBuf> {
     let mut channel = session.channel_session()?;
     channel.exec("pwd")?;
     let mut result = String::new();
@@ -16,10 +61,7 @@ pub fn get_remote_home_dir(session: &ssh2::Session) -> Result<PathBuf, Box<dyn E
     if exit_status == 0 {
         Ok(PathBuf::from(result))
     } else {
-        Err(Box::from(format!(
-            "channel closed with exit status {}",
-            exit_status
-        )))
+        Err(ErrorKind::Ssh2ChannelClosed(exit_status))
     }
 }
 

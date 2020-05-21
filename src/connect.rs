@@ -1,8 +1,8 @@
+use crate::utils::{ErrorKind, Result};
 use base64;
 use dirs::home_dir;
 use rpassword::prompt_password_stdout;
 use std::collections::HashSet;
-use std::error::Error;
 use std::io::{stdin, stdout, Write};
 use std::net::TcpStream;
 
@@ -12,11 +12,9 @@ pub fn create_session(
     username: &str,
     port: Option<&str>,
     verbose: bool,
-) -> Result<ssh2::Session, Box<dyn Error>> {
+) -> Result<ssh2::Session> {
     let tcp = if let Some(port) = port {
-        let port = port
-            .parse::<u16>()
-            .map_err(|_| "unable to parse port number")?;
+        let port = port.parse::<u16>().or(Err(ErrorKind::InvalidPortNumber))?;
         if verbose {
             println!("Attempting to connect to {}:{}.", destination, port);
         }
@@ -51,15 +49,13 @@ fn authenticate_host(
     destination: &str,
     port: u16,
     verbose: bool,
-) -> Result<ssh2::Session, Box<dyn Error>> {
+) -> Result<ssh2::Session> {
     let mut known_hosts = session.known_hosts()?;
     let known_hosts_path = home_dir()
-        .ok_or("unable to find home directory")?
+        .ok_or(ErrorKind::UnableToFindHomeDirectory)?
         .join(".ssh/known_hosts");
     known_hosts.read_file(&known_hosts_path, ssh2::KnownHostFileKind::OpenSSH)?;
-    let (key, key_type) = session
-        .host_key()
-        .ok_or("unable to get host key from session")?;
+    let (key, key_type) = session.host_key().ok_or(ErrorKind::HostKeyNotFound)?;
     match known_hosts.check_port(destination, port, key) {
         ssh2::CheckResult::Match => {
             if verbose {
@@ -82,7 +78,7 @@ fn authenticate_host(
                 .map(|(hash_type, fingerprint)| {
                     format!("{}:{}", hash_type, base64::encode(fingerprint))
                 })
-                .ok_or("unable to get fingerprint of host")?;
+                .ok_or(ErrorKind::HostFingerprintNotFound)?;
 
             println!(
                 "No matching host key for {}:{} was not found in {:?}.",
@@ -100,27 +96,24 @@ fn authenticate_host(
                     known_hosts.write_file(&known_hosts_path, ssh2::KnownHostFileKind::OpenSSH)?;
                     Ok(session)
                 }
-                _ => Err(Box::from(format!(
-                    "the authenticity of host {}:{} cannot be established",
-                    destination, port
-                ))),
+                _ => Err(ErrorKind::HostAuthenticationError(
+                    destination.to_string(),
+                    port,
+                )),
             }
         }
         ssh2::CheckResult::Mismatch => {
             eprintln!("####################################################");
             eprintln!("# WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED! #");
             eprintln!("####################################################");
-            Err(Box::from("possible person in the middle attack"))
+            Err(ErrorKind::MismatchedFingerprint)
         }
-        ssh2::CheckResult::Failure => Err(Box::from("failed to check known hosts")),
+        ssh2::CheckResult::Failure => Err(ErrorKind::HostFileCheckError),
     }
 }
 
 /// Authenticate the session using a password or public key.
-fn authenticate_session(
-    session: ssh2::Session,
-    username: &str,
-) -> Result<ssh2::Session, Box<dyn Error>> {
+fn authenticate_session(session: ssh2::Session, username: &str) -> Result<ssh2::Session> {
     let mut has_entered_password = false;
 
     for _ in 0..3 {
@@ -176,15 +169,12 @@ fn authenticate_session(
     if session.authenticated() {
         Ok(session)
     } else {
-        Err(Box::from("unable to authenticate session"))
+        Err(ErrorKind::UserAuthenticationError(username.to_string()))
     }
 }
 
 /// Attempt to authenticate the session by prompting the user for a password three times.
-fn authenticate_with_password(
-    session: &ssh2::Session,
-    username: &str,
-) -> Result<(), Box<dyn Error>> {
+fn authenticate_with_password(session: &ssh2::Session, username: &str) -> Result<()> {
     for _ in 0..3 {
         let password = prompt_password_stdout("🔐 Password: ")?;
         if session.userauth_password(username, &password).is_ok() {
@@ -193,5 +183,5 @@ fn authenticate_with_password(
             eprintln!("❌ Permission denied, please try again.");
         }
     }
-    Err(Box::from("unable to authenticate session"))
+    Err(ErrorKind::UserAuthenticationError(username.to_string()))
 }
