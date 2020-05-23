@@ -2,11 +2,12 @@ use crate::connect::create_session;
 use crate::file::*;
 use crate::progress::Progress;
 use crate::user_message::UserMessage;
-use crate::utils::Result;
+use crate::utils::{ErrorKind, Result};
 
 use clap;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ssh2;
+use std::collections::VecDeque;
 use std::iter::Iterator;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -18,7 +19,7 @@ pub struct Rftp {
     sftp: Arc<ssh2::Sftp>,
     files: Arc<Mutex<FileList>>,
     is_alive: bool,
-    progress_bars: Vec<Arc<Progress>>,
+    progress_bars: Arc<Mutex<Vec<Arc<Progress>>>>,
     show_hidden_files: Arc<AtomicBool>,
     user_message: Arc<UserMessage>,
 }
@@ -70,7 +71,7 @@ impl Rftp {
             sftp: Arc::new(sftp),
             files,
             is_alive: true,
-            progress_bars: vec![],
+            progress_bars: Arc::new(Mutex::new(vec![])),
             show_hidden_files: Arc::new(AtomicBool::new(show_hidden_files)),
             user_message: Arc::new(user_message),
         })
@@ -78,7 +79,10 @@ impl Rftp {
 
     /// Work that is done on every "tick".
     pub fn tick(&mut self) -> Result<()> {
-        self.progress_bars.retain(|p| !p.is_finished());
+        self.progress_bars
+            .lock()
+            .unwrap()
+            .retain(|p| !p.is_finished());
         Ok(())
     }
 
@@ -95,7 +99,7 @@ impl Rftp {
                 code: KeyCode::Char('q'),
                 modifiers: KeyModifiers::NONE,
             } => {
-                if self.progress_bars.is_empty() {
+                if self.progress_bars.lock().unwrap().is_empty() {
                     self.is_alive = false;
                 } else {
                     self.user_message.report(
@@ -166,19 +170,9 @@ impl Rftp {
                         }
                     }
                     SelectedFileEntry::Remote(source) => {
-                        if source.is_file() {
-                            let dest = files
-                                .get_local_working_path()
-                                .join(source.path().file_name().unwrap());
-                            drop(files);
-                            self.spawn_download(source, dest);
-                        } else {
-                            drop(files);
-                            self.user_message.report(&format!(
-                                "Error: Cannot download \"{}\" because it is a directory!",
-                                source.file_name_lossy().unwrap()
-                            ));
-                        }
+                        let dest = files.get_local_working_path().to_path_buf();
+                        drop(files);
+                        self.spawn_download(source, dest);
                     }
                     SelectedFileEntry::None => {
                         drop(files);
@@ -267,7 +261,10 @@ impl Rftp {
             let len = source.len().unwrap();
             Arc::new(Progress::new(&title, len))
         };
-        self.progress_bars.push(Arc::clone(&progress));
+        self.progress_bars
+            .lock()
+            .unwrap()
+            .push(Arc::clone(&progress));
 
         let sftp = Arc::clone(&self.sftp);
         let user_message = Arc::clone(&self.user_message);
@@ -292,35 +289,81 @@ impl Rftp {
         });
     }
 
-    /// Spawn a task to download `source` to `dest`, then fetch the local files again.
+    /// Spawn a task to download `source` into the directory `dest`, then fetch the
+    /// local files again.
     fn spawn_download(&mut self, source: RemoteFileEntry, dest: PathBuf) {
-        let source_filename = source.file_name_lossy().unwrap().to_string();
-        let progress = {
-            let title = format!("Downloading \"{}\"", source_filename);
-            let len = source.len().unwrap();
-            Arc::new(Progress::new(&title, len))
-        };
-        self.progress_bars.push(Arc::clone(&progress));
-
+        assert!(dest.is_dir());
         let sftp = Arc::clone(&self.sftp);
         let user_message = Arc::clone(&self.user_message);
         let show_hidden_files = Arc::clone(&self.show_hidden_files);
         let files = Arc::clone(&self.files);
+        let source_filename = source.file_name_lossy().unwrap().to_string();
+        let progress_bars = Arc::clone(&self.progress_bars);
 
-        thread::spawn(move || {
-            let result = download(source, dest, &sftp, &progress).and({
-                let mut files = files.lock().unwrap();
-                files.fetch_local_files(show_hidden_files.load(Ordering::Relaxed))
-            });
-            if let Err(err) = result {
-                progress.finish();
-                user_message.report(&format!(
-                    "Error: Unable to download \"{}\". {}",
-                    source_filename,
-                    err.to_string()
-                ));
-            } else {
-                user_message.report(&format!("Finished downloading \"{}\".", source_filename));
+        let task = move || -> Result<()> {
+            let mut job_queue = VecDeque::from(vec![(source, dest)]);
+
+            while !job_queue.is_empty() {
+                let (source, dest) = job_queue.pop_front().unwrap();
+
+                match &source {
+                    RemoteFileEntry::File(source_path, len) => {
+                        let new_local_file_path = dest.join(source_path.file_name().unwrap());
+                        if new_local_file_path.exists() {
+                            return Err(ErrorKind::LocalFileExists(
+                                new_local_file_path.to_string_lossy().to_string(),
+                            ));
+                        } else {
+                            let progress = {
+                                // TODO: Path::display
+                                let title = format!(
+                                    "Uploading \"{}\"",
+                                    source.file_name_lossy().unwrap().to_string()
+                                );
+                                Arc::new(Progress::new(&title, *len))
+                            };
+                            progress_bars.lock().unwrap().push(Arc::clone(&progress));
+
+                            download(source, new_local_file_path, &sftp, &progress)?;
+                        }
+                    }
+                    RemoteFileEntry::Directory(source_path) => {
+                        let new_local_directory_path = dest.join(source_path.file_name().unwrap());
+                        if new_local_directory_path.exists() {
+                            return Err(ErrorKind::LocalFileExists(
+                                new_local_directory_path.to_string_lossy().to_string(),
+                            ));
+                        } else {
+                            std::fs::create_dir(&new_local_directory_path)?;
+                            job_queue.extend(
+                                RemoteFileEntry::read_dir(&source_path, &sftp)?
+                                    .into_iter()
+                                    .map(move |source_child| {
+                                        (source_child, new_local_directory_path.clone())
+                                    }),
+                            );
+                        }
+                    }
+                    RemoteFileEntry::Parent(_) => {
+                        return Err(ErrorKind::CannotDownloadParent(
+                            source.path().to_string_lossy().to_string(),
+                        ))
+                    }
+                }
+            }
+
+            let mut files = files.lock().unwrap();
+            files.fetch_local_files(show_hidden_files.load(Ordering::Relaxed))?;
+
+            Ok(())
+        };
+
+        std::thread::spawn(move || match task() {
+            Ok(()) => {
+                user_message.report(&format!("Finished uploading \"{}\".", source_filename));
+            }
+            Err(error) => {
+                user_message.report(&format!("Error: {}.", error.to_string()));
             }
         });
     }
@@ -338,7 +381,8 @@ impl Rftp {
         let rect = frame.size();
         let rect = self.user_message.draw(&mut frame, rect);
 
-        let progress_bars = self.progress_bars.iter().map(|p| p.as_ref()).collect();
+        let progress_bar_vec = self.progress_bars.lock().unwrap();
+        let progress_bars = progress_bar_vec.iter().map(|p| p.as_ref()).collect();
         let rect = Progress::draw_progress_bars(progress_bars, &mut frame, rect);
 
         self.files.lock().unwrap().draw(&mut frame, rect);

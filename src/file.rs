@@ -216,6 +216,31 @@ impl FileEntry for LocalFileEntry {
     }
 }
 
+impl LocalFileEntry {
+    /// Return a list of `LocalFileEntry`'s that `path` contains if `path`
+    /// is a directory.
+    ///
+    /// The directories `.` and `..` are not included.
+    pub fn read_dir(path: &Path) -> io::Result<Vec<LocalFileEntry>> {
+        let mut entries = vec![];
+        for entry in read_dir(path)? {
+            let path = entry?.path();
+            if path.is_file() {
+                let len = metadata(&path)?.len();
+                entries.push(LocalFileEntry::File(path, len))
+            // } else if path.is_dir() {
+            } else {
+                entries.push(LocalFileEntry::Directory(path))
+                // } else if path.metadata()?.file_type().is_symlink() {
+                // unimplemented!()
+                // } else {
+                // unimplemented!()
+            }
+        }
+        Ok(entries)
+    }
+}
+
 impl FileEntry for RemoteFileEntry {
     fn path(&self) -> &Path {
         match self {
@@ -258,6 +283,27 @@ impl FileEntry for RemoteFileEntry {
     }
 }
 
+impl RemoteFileEntry {
+    pub fn read_dir(path: &Path, sftp: &ssh2::Sftp) -> io::Result<Vec<RemoteFileEntry>> {
+        Ok(sftp
+            .readdir(path)?
+            .iter()
+            .map(|(path, stat)| {
+                if stat.is_file() {
+                    RemoteFileEntry::File(path.to_path_buf(), stat.size.unwrap())
+                // } else if stat.is_dir() {
+                } else {
+                    RemoteFileEntry::Directory(path.to_path_buf())
+                    // } else if stat.file_type().is_symlink() {
+                    // unimplemented!()
+                    // } else {
+                    // unimplemented!()
+                }
+            })
+            .collect())
+    }
+}
+
 impl FileList {
     pub fn new(
         session: &ssh2::Session,
@@ -281,20 +327,14 @@ impl FileList {
 
     /// Read the current local directory and populate this file list with the new local entries.
     pub fn fetch_local_files(&mut self, keep_hidden_files: bool) -> io::Result<()> {
-        self.local_entries = vec![];
-        if let Some(parent) = self.local_directory.parent() {
-            self.local_entries
-                .push(LocalFileEntry::Parent(parent.to_path_buf()));
-        }
-        for entry in read_dir(&self.local_directory)? {
-            let path = entry?.path();
-            if path.is_file() {
-                let len = metadata(&path)?.len();
-                self.local_entries.push(LocalFileEntry::File(path, len));
-            } else {
-                self.local_entries.push(LocalFileEntry::Directory(path));
-            }
-        }
+        self.local_entries = self
+            .local_directory
+            .parent()
+            .map(|parent| LocalFileEntry::Parent(parent.to_path_buf()))
+            .into_iter()
+            .chain(LocalFileEntry::read_dir(&self.local_directory)?)
+            .collect();
+
         if !keep_hidden_files {
             self.local_entries.retain(|entry| !entry.is_hidden());
         }
@@ -308,23 +348,14 @@ impl FileList {
         sftp: &ssh2::Sftp,
         keep_hidden_files: bool,
     ) -> io::Result<()> {
-        self.remote_entries = vec![];
-        if let Some(parent) = self.remote_directory.parent() {
-            self.remote_entries
-                .push(RemoteFileEntry::Parent(parent.to_path_buf()));
-        }
-        self.remote_entries
-            .extend(
-                sftp.readdir(&self.remote_directory)?
-                    .iter()
-                    .map(|(path, stat)| {
-                        if stat.is_file() {
-                            RemoteFileEntry::File(path.to_path_buf(), stat.size.unwrap())
-                        } else {
-                            RemoteFileEntry::Directory(path.to_path_buf())
-                        }
-                    }),
-            );
+        self.remote_entries = self
+            .remote_directory
+            .parent()
+            .map(|parent| RemoteFileEntry::Parent(parent.to_path_buf()))
+            .into_iter()
+            .chain(RemoteFileEntry::read_dir(&self.remote_directory, sftp)?)
+            .collect();
+
         if !keep_hidden_files {
             self.remote_entries.retain(|entry| !entry.is_hidden());
         }

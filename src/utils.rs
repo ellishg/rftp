@@ -33,6 +33,12 @@ pub enum ErrorKind {
     #[error("unable to find fingerprint of host")]
     HostFingerprintNotFound,
 
+    #[error("cannot download parent directory {0}")]
+    CannotDownloadParent(String),
+
+    #[error("local file {0} already exists")]
+    LocalFileExists(String),
+
     #[error("channel closed with exit status {0}")]
     Ssh2ChannelClosed(i32),
 
