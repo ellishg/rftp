@@ -16,12 +16,14 @@ use tui::{
 
 const FILELIST_FILE_COLOR: Color = Color::Green;
 const FILELIST_DIRECTORY_COLOR: Color = Color::Blue;
+const FILELIST_SYMLINK_COLOR: Color = Color::Red;
 const FILELIST_HIGHLIGHT_COLOR: Color = Color::LightMagenta;
 
 #[derive(Clone, PartialEq, Eq, Ord)]
 pub enum LocalFileEntry {
     File(PathBuf, u64),
     Directory(PathBuf),
+    Symlink(PathBuf),
     Parent(PathBuf),
 }
 
@@ -29,6 +31,7 @@ pub enum LocalFileEntry {
 pub enum RemoteFileEntry {
     File(PathBuf, u64),
     Directory(PathBuf),
+    Symlink(PathBuf),
     Parent(PathBuf),
 }
 
@@ -169,7 +172,10 @@ pub trait FileEntry {
                 Style::default().fg(FILELIST_DIRECTORY_COLOR),
             )
         } else {
-            unreachable!()
+            Text::styled(
+                format!("{}", self.file_name_lossy().unwrap()),
+                Style::default().fg(FILELIST_SYMLINK_COLOR),
+            )
         }
     }
 }
@@ -179,6 +185,7 @@ impl FileEntry for LocalFileEntry {
         match self {
             LocalFileEntry::File(path, _) => path,
             LocalFileEntry::Directory(path) => path,
+            LocalFileEntry::Symlink(path) => path,
             LocalFileEntry::Parent(path) => path,
         }
     }
@@ -187,6 +194,7 @@ impl FileEntry for LocalFileEntry {
         match self {
             LocalFileEntry::File(_, _) => false,
             LocalFileEntry::Directory(_) => true,
+            LocalFileEntry::Symlink(_) => false,
             LocalFileEntry::Parent(_) => true,
         }
     }
@@ -195,6 +203,7 @@ impl FileEntry for LocalFileEntry {
         match self {
             LocalFileEntry::File(_, _) => true,
             LocalFileEntry::Directory(_) => false,
+            LocalFileEntry::Symlink(_) => false,
             LocalFileEntry::Parent(_) => false,
         }
     }
@@ -203,6 +212,7 @@ impl FileEntry for LocalFileEntry {
         match self {
             LocalFileEntry::File(_, _) => false,
             LocalFileEntry::Directory(_) => false,
+            LocalFileEntry::Symlink(_) => false,
             LocalFileEntry::Parent(_) => true,
         }
     }
@@ -211,6 +221,7 @@ impl FileEntry for LocalFileEntry {
         match self {
             LocalFileEntry::File(_, len) => Some(*len),
             LocalFileEntry::Directory(_) => None,
+            LocalFileEntry::Symlink(_) => None,
             LocalFileEntry::Parent(_) => None,
         }
     }
@@ -228,13 +239,11 @@ impl LocalFileEntry {
             if path.is_file() {
                 let len = metadata(&path)?.len();
                 entries.push(LocalFileEntry::File(path, len))
-            // } else if path.is_dir() {
-            } else {
+            } else if path.is_dir() {
                 entries.push(LocalFileEntry::Directory(path))
-                // } else if path.metadata()?.file_type().is_symlink() {
-                // unimplemented!()
-                // } else {
-                // unimplemented!()
+            } else {
+                // Guess that this file is a symlink.
+                entries.push(LocalFileEntry::Symlink(path))
             }
         }
         Ok(entries)
@@ -246,6 +255,7 @@ impl FileEntry for RemoteFileEntry {
         match self {
             RemoteFileEntry::File(path, _) => path,
             RemoteFileEntry::Directory(path) => path,
+            RemoteFileEntry::Symlink(path) => path,
             RemoteFileEntry::Parent(path) => path,
         }
     }
@@ -254,6 +264,7 @@ impl FileEntry for RemoteFileEntry {
         match self {
             RemoteFileEntry::File(_, _) => false,
             RemoteFileEntry::Directory(_) => true,
+            RemoteFileEntry::Symlink(_) => false,
             RemoteFileEntry::Parent(_) => true,
         }
     }
@@ -262,6 +273,7 @@ impl FileEntry for RemoteFileEntry {
         match self {
             RemoteFileEntry::File(_, _) => true,
             RemoteFileEntry::Directory(_) => false,
+            RemoteFileEntry::Symlink(_) => false,
             RemoteFileEntry::Parent(_) => false,
         }
     }
@@ -270,6 +282,7 @@ impl FileEntry for RemoteFileEntry {
         match self {
             RemoteFileEntry::File(_, _) => false,
             RemoteFileEntry::Directory(_) => false,
+            RemoteFileEntry::Symlink(_) => false,
             RemoteFileEntry::Parent(_) => true,
         }
     }
@@ -278,6 +291,7 @@ impl FileEntry for RemoteFileEntry {
         match self {
             RemoteFileEntry::File(_, len) => Some(*len),
             RemoteFileEntry::Directory(_) => None,
+            RemoteFileEntry::Symlink(_) => None,
             RemoteFileEntry::Parent(_) => None,
         }
     }
@@ -291,13 +305,11 @@ impl RemoteFileEntry {
             .map(|(path, stat)| {
                 if stat.is_file() {
                     RemoteFileEntry::File(path.to_path_buf(), stat.size.unwrap())
-                // } else if stat.is_dir() {
-                } else {
+                } else if stat.is_dir() {
                     RemoteFileEntry::Directory(path.to_path_buf())
-                    // } else if stat.file_type().is_symlink() {
-                    // unimplemented!()
-                    // } else {
-                    // unimplemented!()
+                } else {
+                    // Guess that this file is a symlink.
+                    RemoteFileEntry::Symlink(path.to_path_buf())
                 }
             })
             .collect())

@@ -344,6 +344,7 @@ impl Rftp {
                             );
                         }
                     }
+                    RemoteFileEntry::Symlink(_) => unimplemented!(),
                     RemoteFileEntry::Parent(_) => {
                         return Err(ErrorKind::CannotDownloadParent(
                             source.path().to_string_lossy().to_string(),
