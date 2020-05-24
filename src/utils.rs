@@ -36,8 +36,14 @@ pub enum ErrorKind {
     #[error("cannot download parent directory {0}")]
     CannotDownloadParent(String),
 
+    #[error("cannot upload parent directory {0}")]
+    CannotUploadParent(String),
+
     #[error("local file {0} already exists")]
     LocalFileExists(String),
+
+    #[error("remote file {0} already exists")]
+    RemoteFileExists(String),
 
     #[error("channel closed with exit status {0}")]
     Ssh2ChannelClosed(i32),

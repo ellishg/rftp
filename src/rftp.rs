@@ -155,19 +155,9 @@ impl Rftp {
                 let files = self.files.lock().unwrap();
                 match files.get_selected_entry() {
                     SelectedFileEntry::Local(source) => {
-                        if source.is_file() {
-                            let dest = files
-                                .get_remote_working_path()
-                                .join(source.path().file_name().unwrap());
-                            drop(files);
-                            self.spawn_upload(source, dest);
-                        } else {
-                            drop(files);
-                            self.user_message.report(&format!(
-                                "Error: Cannot upload \"{}\" because it is a directory!",
-                                source.file_name_lossy().unwrap()
-                            ));
-                        }
+                        let dest = files.get_remote_working_path().to_path_buf();
+                        drop(files);
+                        self.spawn_upload(source, dest);
                     }
                     SelectedFileEntry::Remote(source) => {
                         let dest = files.get_local_working_path().to_path_buf();
@@ -253,38 +243,106 @@ impl Rftp {
         Ok(())
     }
 
-    /// Spawn a task to upload `source` to `dest`, then fetch the remote files again.
+    /// Spawn a task to upload `source` into the directory `dest`, then fetch the
+    /// remote files again.
     fn spawn_upload(&mut self, source: LocalFileEntry, dest: PathBuf) {
-        let source_filename = source.file_name_lossy().unwrap().to_string();
-        let progress = {
-            let title = format!("Uploading \"{}\"", source_filename);
-            let len = source.len().unwrap();
-            Arc::new(Progress::new(&title, len))
-        };
-        self.progress_bars
-            .lock()
-            .unwrap()
-            .push(Arc::clone(&progress));
-
+        assert!(dest.is_dir());
         let sftp = Arc::clone(&self.sftp);
         let user_message = Arc::clone(&self.user_message);
         let show_hidden_files = Arc::clone(&self.show_hidden_files);
         let files = Arc::clone(&self.files);
+        let source_filename = source.file_name_lossy().unwrap().to_string();
+        let progress_bars = Arc::clone(&self.progress_bars);
+
+        let directory_progress = if source.is_dir() {
+            // TODO: Add a special progress type to use here.
+            let progress = {
+                let title = format!("Uploading \"{}\"", source.path().display());
+                Arc::new(Progress::new(&title, 0))
+            };
+            progress_bars.lock().unwrap().push(Arc::clone(&progress));
+            Some(progress)
+        } else {
+            None
+        };
+
+        // Traverse the local directory in depth-first order and upload each file.
+        let task = move |sftp: &ssh2::Sftp, user_message: &UserMessage| -> Result<()> {
+            let mut job_queue = VecDeque::from(vec![(source, dest)]);
+
+            while !job_queue.is_empty() {
+                let (source, dest) = job_queue.pop_front().unwrap();
+
+                match &source {
+                    LocalFileEntry::File(source_path, len) => {
+                        let new_remote_file_path = dest.join(source_path.file_name().unwrap());
+                        if RemoteFileEntry::exists(&new_remote_file_path, sftp)? {
+                            return Err(ErrorKind::RemoteFileExists(
+                                new_remote_file_path.to_string_lossy().to_string(),
+                            ));
+                        } else {
+                            let progress = {
+                                let title = format!(
+                                    "Uploading \"{}\"",
+                                    source.file_name_lossy().unwrap().to_string()
+                                );
+                                Arc::new(Progress::new(&title, *len))
+                            };
+                            progress_bars.lock().unwrap().push(Arc::clone(&progress));
+
+                            upload(source, new_remote_file_path, &sftp, &progress)?;
+                        }
+                    }
+                    LocalFileEntry::Directory(source_path) => {
+                        let new_remote_directory_path = dest.join(source_path.file_name().unwrap());
+                        if RemoteFileEntry::exists(&new_remote_directory_path, sftp)? {
+                            return Err(ErrorKind::RemoteFileExists(
+                                new_remote_directory_path.to_string_lossy().to_string(),
+                            ));
+                        } else {
+                            job_queue.extend(
+                                LocalFileEntry::read_dir(&source_path)?.into_iter().map(
+                                    |source_child| {
+                                        (source_child, new_remote_directory_path.clone())
+                                    },
+                                ),
+                            );
+                            sftp.mkdir(&new_remote_directory_path, 0o0755)?;
+                        }
+                    }
+                    LocalFileEntry::Symlink(path) => user_message.report(&format!(
+                        "Warning: Skipping local file {} because it might be a symlink.",
+                        path.display()
+                    )),
+                    LocalFileEntry::Parent(path) => {
+                        return Err(ErrorKind::CannotUploadParent(
+                            path.to_string_lossy().to_string(),
+                        ))
+                    }
+                }
+            }
+
+            Ok(())
+        };
 
         thread::spawn(move || {
-            let result = upload(source, dest, &sftp, &progress).and({
-                let mut files = files.lock().unwrap();
-                files.fetch_remote_files(&sftp, show_hidden_files.load(Ordering::Relaxed))
-            });
-            if let Err(err) = result {
-                progress.finish();
-                user_message.report(&format!(
-                    "Error: Unable to upload \"{}\". {}",
-                    source_filename,
-                    err.to_string()
-                ));
-            } else {
-                user_message.report(&format!("Finished uploading \"{}\".", source_filename));
+            match task(&sftp, &user_message) {
+                Ok(()) => {
+                    user_message.report(&format!("Finished uploading \"{}\".", source_filename));
+                }
+                Err(error) => {
+                    user_message.report(&format!("Error: {}.", error.to_string()));
+                }
+            };
+
+            directory_progress.map(|p| p.finish());
+
+            if let Err(error) = files
+                .lock()
+                .unwrap()
+                .fetch_remote_files(&sftp, show_hidden_files.load(Ordering::Relaxed))
+            {
+                user_message.report(&format!("Error: {}.", error.to_string()));
             }
         });
     }
@@ -371,10 +429,10 @@ impl Rftp {
             Ok(())
         };
 
-        std::thread::spawn(move || {
+        thread::spawn(move || {
             match task(&user_message) {
                 Ok(()) => {
-                    user_message.report(&format!("Finished uploading \"{}\".", source_filename));
+                    user_message.report(&format!("Finished downloading \"{}\".", source_filename));
                 }
                 Err(error) => {
                     user_message.report(&format!("Error: {}.", error.to_string()));

@@ -1,6 +1,7 @@
 use crate::progress::Progress;
 use crate::utils::{bytes_to_string, get_remote_home_dir, Result};
 
+use libssh2_sys;
 use ssh2;
 use std::borrow::Cow;
 use std::env;
@@ -314,6 +315,18 @@ impl RemoteFileEntry {
             })
             .collect())
     }
+
+    pub fn exists(path: impl AsRef<Path>, sftp: &ssh2::Sftp) -> Result<bool> {
+        match sftp.stat(path.as_ref()) {
+            // NOTE: `stat` will fail if this path does not exist on the remote host. We
+            //        assume this is the case when `stat` returns `LIBSSH2_ERROR_SFTP_PROTOCOL`.
+            Err(error) => match error.code() {
+                libssh2_sys::LIBSSH2_ERROR_SFTP_PROTOCOL => Ok(false),
+                _ => Err(error.into()),
+            },
+            Ok(_) => Ok(true),
+        }
+    }
 }
 
 impl FileList {
@@ -395,8 +408,7 @@ impl FileList {
         sftp: &ssh2::Sftp,
         keep_hidden_files: bool,
     ) -> io::Result<()> {
-        // TODO: canonicalize
-        self.remote_directory = path.as_ref().to_path_buf();
+        self.remote_directory = sftp.realpath(path.as_ref())?;
         self.fetch_remote_files(sftp, keep_hidden_files)?;
         // Make sure we have a valid entry selected.
         self.apply_op_to_selected(|i| i);

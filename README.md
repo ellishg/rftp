@@ -30,5 +30,5 @@ rftp <destination> -u <username> -p <port>
 ## TODO
 
 - [ ] Create new directories
-- [ ] Upload/download directories recursively
+- [x] Upload/download directories recursively
 - [x] Show/hide invisible files
