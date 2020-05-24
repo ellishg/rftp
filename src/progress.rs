@@ -14,6 +14,9 @@ use tui::{
 const HISTORY_MAX_AGE: Duration = Duration::from_secs(5);
 const PROGRESSBAR_COLOR: Color = Color::LightBlue;
 
+// TODO: Make a new progress type for directories. It should communicate to the user how many
+//       bytes have been sent, the speed, and maybe how many files have been sent.
+
 pub struct Progress {
     title: String,
     bytes_sent: AtomicU64,

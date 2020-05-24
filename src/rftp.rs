@@ -238,13 +238,13 @@ impl Rftp {
                 self.user_message.report(&format!(
                     "Controls for rftp version {}.
                     ------------------------------------------------------------
-                    h/j/k/l         Navigate the files.
-                    Enter           Enter the selected directory.
-                    Spacebar        Download/Upload the selected file.
-                    z               Show/hide hidden files.
-                    q               Quit.
-                    Q               Force quit.
-                    ?               Print this help message.",
+                    h/j/k/l       Navigate the files.
+                    Enter         Enter the selected directory.
+                    Spacebar      Download/Upload the selected file/directory.
+                    z             Show/hide hidden files.
+                    q             Quit.
+                    Q             Force quit.
+                    ?             Print this help message.",
                     clap::crate_version!()
                 ));
             }
@@ -300,7 +300,20 @@ impl Rftp {
         let source_filename = source.file_name_lossy().unwrap().to_string();
         let progress_bars = Arc::clone(&self.progress_bars);
 
-        let task = move || -> Result<()> {
+        let directory_progress = if source.is_dir() {
+            // TODO: Add a special progress type to use here.
+            let progress = {
+                let title = format!("Downloading \"{}\"", source.path().display());
+                Arc::new(Progress::new(&title, 0))
+            };
+            progress_bars.lock().unwrap().push(Arc::clone(&progress));
+            Some(progress)
+        } else {
+            None
+        };
+
+        // Traverse the remote directory in depth-first order and download each file.
+        let task = move |user_message: &UserMessage| -> Result<()> {
             let mut job_queue = VecDeque::from(vec![(source, dest)]);
 
             while !job_queue.is_empty() {
@@ -315,9 +328,8 @@ impl Rftp {
                             ));
                         } else {
                             let progress = {
-                                // TODO: Path::display
                                 let title = format!(
-                                    "Uploading \"{}\"",
+                                    "Downloading \"{}\"",
                                     source.file_name_lossy().unwrap().to_string()
                                 );
                                 Arc::new(Progress::new(&title, *len))
@@ -334,36 +346,48 @@ impl Rftp {
                                 new_local_directory_path.to_string_lossy().to_string(),
                             ));
                         } else {
-                            std::fs::create_dir(&new_local_directory_path)?;
                             job_queue.extend(
                                 RemoteFileEntry::read_dir(&source_path, &sftp)?
                                     .into_iter()
-                                    .map(move |source_child| {
+                                    .map(|source_child| {
                                         (source_child, new_local_directory_path.clone())
                                     }),
                             );
+                            std::fs::create_dir(new_local_directory_path)?;
                         }
                     }
-                    RemoteFileEntry::Symlink(_) => unimplemented!(),
-                    RemoteFileEntry::Parent(_) => {
+                    RemoteFileEntry::Symlink(path) => user_message.report(&format!(
+                        "Warning: Skipping remote file {} because it might be a symlink.",
+                        path.display()
+                    )),
+                    RemoteFileEntry::Parent(path) => {
                         return Err(ErrorKind::CannotDownloadParent(
-                            source.path().to_string_lossy().to_string(),
+                            path.to_string_lossy().to_string(),
                         ))
                     }
                 }
             }
 
-            let mut files = files.lock().unwrap();
-            files.fetch_local_files(show_hidden_files.load(Ordering::Relaxed))?;
-
             Ok(())
         };
 
-        std::thread::spawn(move || match task() {
-            Ok(()) => {
-                user_message.report(&format!("Finished uploading \"{}\".", source_filename));
-            }
-            Err(error) => {
+        std::thread::spawn(move || {
+            match task(&user_message) {
+                Ok(()) => {
+                    user_message.report(&format!("Finished uploading \"{}\".", source_filename));
+                }
+                Err(error) => {
+                    user_message.report(&format!("Error: {}.", error.to_string()));
+                }
+            };
+
+            directory_progress.map(|p| p.finish());
+
+            if let Err(error) = files
+                .lock()
+                .unwrap()
+                .fetch_local_files(show_hidden_files.load(Ordering::Relaxed))
+            {
                 user_message.report(&format!("Error: {}.", error.to_string()));
             }
         });
