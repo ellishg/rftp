@@ -91,7 +91,7 @@ impl Rftp {
         match key {
             KeyEvent {
                 code: KeyCode::Char('Q'),
-                modifiers: KeyModifiers::NONE,
+                modifiers: KeyModifiers::SHIFT,
             } => {
                 self.is_alive = false;
             }
