@@ -102,7 +102,7 @@ impl Rftp {
                 if self.progress_bars.lock().unwrap().is_empty() {
                     self.is_alive = false;
                 } else {
-                    self.user_message.report(
+                    self.user_message.warn(
                         "There are still downloads/uploads in progress. Press Q to force quit.",
                     );
                 }
@@ -121,7 +121,7 @@ impl Rftp {
                             )?;
                         } else {
                             drop(files);
-                            self.user_message.report(&format!(
+                            self.user_message.error(&format!(
                                 "Error: Cannot enter \"{}\" because it is not a directory!",
                                 entry.file_name_lossy().unwrap()
                             ));
@@ -136,7 +136,7 @@ impl Rftp {
                             )?;
                         } else {
                             drop(files);
-                            self.user_message.report(&format!(
+                            self.user_message.error(&format!(
                                 "Error: Cannot enter \"{}\" because it is not a directory!",
                                 entry.file_name_lossy().unwrap()
                             ));
@@ -144,7 +144,7 @@ impl Rftp {
                     }
                     SelectedFileEntry::None => {
                         drop(files);
-                        self.user_message.report("No directory selected.");
+                        self.user_message.error("No directory selected.");
                     }
                 }
             }
@@ -166,7 +166,7 @@ impl Rftp {
                     }
                     SelectedFileEntry::None => {
                         drop(files);
-                        self.user_message.report("No file selected.");
+                        self.user_message.error("No file selected.");
                     }
                 }
             }
@@ -310,7 +310,7 @@ impl Rftp {
                             sftp.mkdir(&new_remote_directory_path, 0o0755)?;
                         }
                     }
-                    LocalFileEntry::Symlink(path) => user_message.report(&format!(
+                    LocalFileEntry::Symlink(path) => user_message.warn(&format!(
                         "Warning: Skipping local file {} because it might be a symlink.",
                         path.display()
                     )),
@@ -331,7 +331,7 @@ impl Rftp {
                     user_message.report(&format!("Finished uploading \"{}\".", source_filename));
                 }
                 Err(error) => {
-                    user_message.report(&format!("Error: {}.", error.to_string()));
+                    user_message.error(&format!("Error: {}.", error.to_string()));
                 }
             };
 
@@ -342,7 +342,7 @@ impl Rftp {
                 .unwrap()
                 .fetch_remote_files(&sftp, show_hidden_files.load(Ordering::Relaxed))
             {
-                user_message.report(&format!("Error: {}.", error.to_string()));
+                user_message.error(&format!("Error: {}.", error.to_string()));
             }
         });
     }
@@ -414,7 +414,7 @@ impl Rftp {
                             std::fs::create_dir(new_local_directory_path)?;
                         }
                     }
-                    RemoteFileEntry::Symlink(path) => user_message.report(&format!(
+                    RemoteFileEntry::Symlink(path) => user_message.warn(&format!(
                         "Warning: Skipping remote file {} because it might be a symlink.",
                         path.display()
                     )),
@@ -435,7 +435,7 @@ impl Rftp {
                     user_message.report(&format!("Finished downloading \"{}\".", source_filename));
                 }
                 Err(error) => {
-                    user_message.report(&format!("Error: {}.", error.to_string()));
+                    user_message.error(&format!("Error: {}.", error.to_string()));
                 }
             };
 
@@ -446,7 +446,7 @@ impl Rftp {
                 .unwrap()
                 .fetch_local_files(show_hidden_files.load(Ordering::Relaxed))
             {
-                user_message.report(&format!("Error: {}.", error.to_string()));
+                user_message.error(&format!("Error: {}.", error.to_string()));
             }
         });
     }

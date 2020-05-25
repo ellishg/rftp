@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 use textwrap;
 use tui::{
     layout::{Constraint, Direction, Layout},
+    style::{Color, Style},
     widgets::{Paragraph, Text},
 };
 
@@ -13,7 +14,7 @@ const NUM_MAX_MESSAGES: u16 = 5;
 const MAX_MESSAGE_AGE: Duration = Duration::from_secs(10);
 
 pub struct UserMessage {
-    messages: Mutex<VecDeque<(Instant, String)>>,
+    messages: Mutex<VecDeque<(Instant, String, Style)>>,
 }
 
 impl UserMessage {
@@ -27,23 +28,40 @@ impl UserMessage {
     ///
     /// Messages are pushed to a queue with a max size of `NUM_MAX_MESSAGES`.
     pub fn report(&self, message: &str) {
+        self.report_with_style(message, Style::default());
+    }
+
+    /// Report a message to the user that will last for `MAX_MESSAGE_AGE`.
+    pub fn warn(&self, message: &str) {
+        self.report_with_style(message, Style::new().fg(Color::Yellow));
+    }
+
+    /// Report a message to the user that will last for `MAX_MESSAGE_AGE`.
+    pub fn error(&self, message: &str) {
+        self.report_with_style(message, Style::new().fg(Color::Red));
+    }
+
+    /// Report a message to the user that will last for `MAX_MESSAGE_AGE`.
+    ///
+    /// Messages are pushed to a queue with a max size of `NUM_MAX_MESSAGES`.
+    fn report_with_style(&self, message: &str, style: Style) {
         let now = Instant::now();
         let message = message.to_string();
         let mut messages = self.messages.lock().unwrap();
-        messages.push_back((now, message));
+        messages.push_back((now, message, style));
         if messages.len() >= NUM_MAX_MESSAGES as usize {
             messages.pop_front();
         }
     }
 
     /// Return a list of strings that represent messages to the user.
-    fn get_lines(&self, max_age: Duration, max_width: u16) -> Vec<String> {
+    fn get_lines(&self, max_age: Duration, max_width: u16) -> Vec<(String, Style)> {
         let now = Instant::now();
         let messages = {
             let mut messages = self.messages.lock().unwrap();
             if let Some(oldest_allowed) = now.checked_sub(max_age) {
                 loop {
-                    if let Some((t, _)) = messages.front() {
+                    if let Some((t, _, _)) = messages.front() {
                         if *t < oldest_allowed {
                             messages.pop_front();
                             continue;
@@ -56,8 +74,10 @@ impl UserMessage {
         };
         messages
             .iter()
-            .flat_map(|(_, string)| textwrap::wrap_iter(string, max_width as usize))
-            .map(|s| s.to_string())
+            .flat_map(|(_, string, style)| {
+                textwrap::wrap_iter(string, max_width as usize).zip(std::iter::repeat(style))
+            })
+            .map(|(string, style)| (string.to_string(), *style))
             .collect()
     }
 
@@ -87,8 +107,8 @@ impl UserMessage {
             let (rect, message_rect) = (chunks[0], chunks[1]);
 
             let items: Vec<Text> = lines
-                .iter()
-                .map(|line| Text::raw(format!("{}\n", line)))
+                .into_iter()
+                .map(|(line, style)| Text::styled(format!("{}\n", line), style))
                 .collect();
             let paragraph = Paragraph::new(items.iter()).wrap(true);
             frame.render_widget(paragraph, message_rect);
