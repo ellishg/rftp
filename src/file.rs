@@ -1,4 +1,4 @@
-use crate::progress::Progress;
+use crate::progress::ProgressFile;
 use crate::utils::{bytes_to_string, get_remote_home_dir, Result};
 
 use libssh2_sys;
@@ -67,7 +67,7 @@ pub fn download(
     source: RemoteFileEntry,
     dest: impl AsRef<Path>,
     sftp: &ssh2::Sftp,
-    progress: &Progress,
+    progress: &ProgressFile,
 ) -> io::Result<()> {
     assert!(source.is_file(), "Source must be a file!");
     let mut source = sftp.open(&source.path())?;
@@ -94,7 +94,7 @@ pub fn upload(
     source: LocalFileEntry,
     dest: impl AsRef<Path>,
     sftp: &ssh2::Sftp,
-    progress: &Progress,
+    progress: &ProgressFile,
 ) -> io::Result<()> {
     assert!(source.is_file(), "Source must be a file!");
     let mut source = File::open(source.path())?;

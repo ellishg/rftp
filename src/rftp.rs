@@ -1,6 +1,6 @@
 use crate::connect::create_session;
 use crate::file::*;
-use crate::progress::Progress;
+use crate::progress::{ProgressBars, ProgressDirectory, ProgressFile};
 use crate::user_message::UserMessage;
 use crate::utils::{ErrorKind, Result};
 
@@ -19,7 +19,7 @@ pub struct Rftp {
     sftp: Arc<ssh2::Sftp>,
     files: Arc<Mutex<FileList>>,
     is_alive: bool,
-    progress_bars: Arc<Mutex<Vec<Arc<Progress>>>>,
+    progress_bars: Arc<Mutex<ProgressBars>>,
     show_hidden_files: Arc<AtomicBool>,
     user_message: Arc<UserMessage>,
 }
@@ -71,7 +71,7 @@ impl Rftp {
             sftp: Arc::new(sftp),
             files,
             is_alive: true,
-            progress_bars: Arc::new(Mutex::new(vec![])),
+            progress_bars: Arc::new(Mutex::new(ProgressBars::new())),
             show_hidden_files: Arc::new(AtomicBool::new(show_hidden_files)),
             user_message: Arc::new(user_message),
         })
@@ -79,10 +79,7 @@ impl Rftp {
 
     /// Work that is done on every "tick".
     pub fn tick(&mut self) -> Result<()> {
-        self.progress_bars
-            .lock()
-            .unwrap()
-            .retain(|p| !p.is_finished());
+        self.progress_bars.lock().unwrap().retain_incomplete();
         Ok(())
     }
 
@@ -255,19 +252,24 @@ impl Rftp {
         let progress_bars = Arc::clone(&self.progress_bars);
 
         let directory_progress = if source.is_dir() {
-            // TODO: Add a special progress type to use here.
             let progress = {
                 let title = format!("Uploading \"{}\"", source.path().display());
-                Arc::new(Progress::new(&title, 0))
+                Arc::new(ProgressDirectory::new(&title))
             };
-            progress_bars.lock().unwrap().push(Arc::clone(&progress));
+            progress_bars
+                .lock()
+                .unwrap()
+                .push_directory_progress(Arc::clone(&progress));
             Some(progress)
         } else {
             None
         };
 
         // Traverse the local directory in depth-first order and upload each file.
-        let task = move |sftp: &ssh2::Sftp, user_message: &UserMessage| -> Result<()> {
+        let task = move |sftp: &ssh2::Sftp,
+                         user_message: &UserMessage,
+                         directory_progress: &Option<Arc<ProgressDirectory>>|
+              -> Result<()> {
             let mut job_queue = VecDeque::from(vec![(source, dest)]);
 
             while !job_queue.is_empty() {
@@ -275,6 +277,7 @@ impl Rftp {
 
                 match &source {
                     LocalFileEntry::File(source_path, len) => {
+                        let len = *len;
                         let new_remote_file_path = dest.join(source_path.file_name().unwrap());
                         if RemoteFileEntry::exists(&new_remote_file_path, sftp)? {
                             return Err(ErrorKind::RemoteFileExists(
@@ -286,11 +289,16 @@ impl Rftp {
                                     "Uploading \"{}\"",
                                     source.file_name_lossy().unwrap().to_string()
                                 );
-                                Arc::new(Progress::new(&title, *len))
+                                Arc::new(ProgressFile::new(&title, len))
                             };
-                            progress_bars.lock().unwrap().push(Arc::clone(&progress));
+                            progress_bars
+                                .lock()
+                                .unwrap()
+                                .push_file_progress(Arc::clone(&progress));
 
                             upload(source, new_remote_file_path, &sftp, &progress)?;
+
+                            directory_progress.as_ref().map(|p| p.inc(len));
                         }
                     }
                     LocalFileEntry::Directory(source_path) => {
@@ -326,7 +334,7 @@ impl Rftp {
         };
 
         thread::spawn(move || {
-            match task(&sftp, &user_message) {
+            match task(&sftp, &user_message, &directory_progress) {
                 Ok(()) => {
                     user_message.report(&format!("Finished uploading \"{}\".", source_filename));
                 }
@@ -359,19 +367,23 @@ impl Rftp {
         let progress_bars = Arc::clone(&self.progress_bars);
 
         let directory_progress = if source.is_dir() {
-            // TODO: Add a special progress type to use here.
             let progress = {
                 let title = format!("Downloading \"{}\"", source.path().display());
-                Arc::new(Progress::new(&title, 0))
+                Arc::new(ProgressDirectory::new(&title))
             };
-            progress_bars.lock().unwrap().push(Arc::clone(&progress));
+            progress_bars
+                .lock()
+                .unwrap()
+                .push_directory_progress(Arc::clone(&progress));
             Some(progress)
         } else {
             None
         };
 
         // Traverse the remote directory in depth-first order and download each file.
-        let task = move |user_message: &UserMessage| -> Result<()> {
+        let task = move |user_message: &UserMessage,
+                         directory_progress: &Option<Arc<ProgressDirectory>>|
+              -> Result<()> {
             let mut job_queue = VecDeque::from(vec![(source, dest)]);
 
             while !job_queue.is_empty() {
@@ -379,6 +391,7 @@ impl Rftp {
 
                 match &source {
                     RemoteFileEntry::File(source_path, len) => {
+                        let len = *len;
                         let new_local_file_path = dest.join(source_path.file_name().unwrap());
                         if new_local_file_path.exists() {
                             return Err(ErrorKind::LocalFileExists(
@@ -390,11 +403,15 @@ impl Rftp {
                                     "Downloading \"{}\"",
                                     source.file_name_lossy().unwrap().to_string()
                                 );
-                                Arc::new(Progress::new(&title, *len))
+                                Arc::new(ProgressFile::new(&title, len))
                             };
-                            progress_bars.lock().unwrap().push(Arc::clone(&progress));
+                            progress_bars
+                                .lock()
+                                .unwrap()
+                                .push_file_progress(Arc::clone(&progress));
 
                             download(source, new_local_file_path, &sftp, &progress)?;
+                            directory_progress.as_ref().map(|p| p.inc(len));
                         }
                     }
                     RemoteFileEntry::Directory(source_path) => {
@@ -430,7 +447,7 @@ impl Rftp {
         };
 
         thread::spawn(move || {
-            match task(&user_message) {
+            match task(&user_message, &directory_progress) {
                 Ok(()) => {
                     user_message.report(&format!("Finished downloading \"{}\".", source_filename));
                 }
@@ -464,9 +481,7 @@ impl Rftp {
         let rect = frame.size();
         let rect = self.user_message.draw(&mut frame, rect);
 
-        let progress_bar_vec = self.progress_bars.lock().unwrap();
-        let progress_bars = progress_bar_vec.iter().map(|p| p.as_ref()).collect();
-        let rect = Progress::draw_progress_bars(progress_bars, &mut frame, rect);
+        let rect = self.progress_bars.lock().unwrap().draw(&mut frame, rect);
 
         self.files.lock().unwrap().draw(&mut frame, rect);
     }
