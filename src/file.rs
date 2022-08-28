@@ -534,6 +534,16 @@ impl FileList {
         self.apply_op_to_selected(|i| i);
     }
 
+    fn generate_list<'a, T>(title: &'a str, items: T) -> List<'a, T>
+    where
+        T: Iterator<Item = Text<'a>>,
+    {
+        List::new(items)
+            .block(Block::default().title(title).borders(Borders::ALL))
+            .highlight_style(Style::default().bg(FILELIST_HIGHLIGHT_COLOR))
+            .highlight_symbol(">>")
+    }
+
     /// Draw the current file list.
     pub fn draw<B>(&self, frame: &mut tui::terminal::Frame<B>, rect: tui::layout::Rect)
     where
@@ -545,33 +555,18 @@ impl FileList {
             .split(rect);
         let (local_rect, remote_rect) = (chunks[0], chunks[1]);
 
-        let generate_list = |title, items| {
-            List::new(items)
-                .block(Block::default().title(title).borders(Borders::ALL))
-                .highlight_style(Style::default().bg(FILELIST_HIGHLIGHT_COLOR))
-                .highlight_symbol(">>")
-        };
-
         let title = format!("Local: {:?}", self.get_local_working_path());
         let width = (local_rect.width - 4) as usize;
-        let items: Vec<_> = self
-            .local_entries
-            .iter()
-            .map(|entry| entry.to_text(width))
-            .collect();
+        let items = self.local_entries.iter().map(|entry| entry.to_text(width));
         let mut state = self.get_local_selected_index();
-        let list = generate_list(&title, items.into_iter());
+        let list = Self::generate_list(&title, items);
         frame.render_stateful_widget(list, local_rect, &mut state);
 
         let title = format!("Remote: {:?}", self.get_remote_working_path());
         let width = (remote_rect.width - 4) as usize;
-        let items: Vec<_> = self
-            .remote_entries
-            .iter()
-            .map(|entry| entry.to_text(width))
-            .collect();
+        let items = self.remote_entries.iter().map(|entry| entry.to_text(width));
         let mut state = self.get_remote_selected_index();
-        let list = generate_list(&title, items.into_iter());
+        let list = Self::generate_list(&title, items);
         frame.render_stateful_widget(list, remote_rect, &mut state);
     }
 }
