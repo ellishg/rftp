@@ -18,7 +18,7 @@ const FILELIST_DIRECTORY_COLOR: Color = Color::Blue;
 const FILELIST_SYMLINK_COLOR: Color = Color::Red;
 const FILELIST_HIGHLIGHT_COLOR: Color = Color::LightMagenta;
 
-#[derive(Clone, PartialEq, Eq, Ord)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum LocalFileEntry {
     File(PathBuf, u64),
     Directory(PathBuf),
@@ -26,7 +26,7 @@ pub enum LocalFileEntry {
     Parent(PathBuf),
 }
 
-#[derive(Clone, PartialEq, Eq, Ord)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RemoteFileEntry {
     File(PathBuf, u64),
     Directory(PathBuf),
@@ -570,18 +570,6 @@ impl FileList {
         let mut state = self.get_remote_selected_index();
         let list = generate_list(&title, items.into_iter());
         frame.render_stateful_widget(list, remote_rect, &mut state);
-    }
-}
-
-impl PartialOrd for LocalFileEntry {
-    fn partial_cmp(&self, other: &LocalFileEntry) -> Option<std::cmp::Ordering> {
-        self.path().partial_cmp(other.path())
-    }
-}
-
-impl PartialOrd for RemoteFileEntry {
-    fn partial_cmp(&self, other: &RemoteFileEntry) -> Option<std::cmp::Ordering> {
-        self.path().partial_cmp(other.path())
     }
 }
 
