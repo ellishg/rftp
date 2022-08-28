@@ -4,9 +4,9 @@ use crate::progress::{ProgressBars, ProgressDirectory, ProgressFile};
 use crate::user_message::UserMessage;
 use crate::utils::{ErrorKind, Result};
 
-use clap;
+
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ssh2;
+
 use std::collections::VecDeque;
 use std::iter::Iterator;
 use std::path::PathBuf;
@@ -287,7 +287,7 @@ impl Rftp {
                             let progress = {
                                 let title = format!(
                                     "Uploading \"{}\"",
-                                    source.file_name_lossy().unwrap().to_string()
+                                    source.file_name_lossy().unwrap()
                                 );
                                 Arc::new(ProgressFile::new(&title, len))
                             };
@@ -296,9 +296,9 @@ impl Rftp {
                                 .unwrap()
                                 .push_file_progress(Arc::clone(&progress));
 
-                            upload(source, new_remote_file_path, &sftp, &progress)?;
+                            upload(source, new_remote_file_path, sftp, &progress)?;
 
-                            directory_progress.as_ref().map(|p| p.inc(len));
+                            if let Some(p) = directory_progress.as_ref() { p.inc(len) }
                         }
                     }
                     LocalFileEntry::Directory(source_path) => {
@@ -309,7 +309,7 @@ impl Rftp {
                             ));
                         } else {
                             job_queue.extend(
-                                LocalFileEntry::read_dir(&source_path)?.into_iter().map(
+                                LocalFileEntry::read_dir(source_path)?.into_iter().map(
                                     |source_child| {
                                         (source_child, new_remote_directory_path.clone())
                                     },
@@ -339,18 +339,18 @@ impl Rftp {
                     user_message.report(&format!("Finished uploading \"{}\".", source_filename));
                 }
                 Err(error) => {
-                    user_message.error(&format!("Error: {}.", error.to_string()));
+                    user_message.error(&format!("Error: {}.", error));
                 }
             };
 
-            directory_progress.map(|p| p.finish());
+            if let Some(p) = directory_progress { p.finish() }
 
             if let Err(error) = files
                 .lock()
                 .unwrap()
                 .fetch_remote_files(&sftp, show_hidden_files.load(Ordering::Relaxed))
             {
-                user_message.error(&format!("Error: {}.", error.to_string()));
+                user_message.error(&format!("Error: {}.", error));
             }
         });
     }
@@ -401,7 +401,7 @@ impl Rftp {
                             let progress = {
                                 let title = format!(
                                     "Downloading \"{}\"",
-                                    source.file_name_lossy().unwrap().to_string()
+                                    source.file_name_lossy().unwrap()
                                 );
                                 Arc::new(ProgressFile::new(&title, len))
                             };
@@ -411,7 +411,7 @@ impl Rftp {
                                 .push_file_progress(Arc::clone(&progress));
 
                             download(source, new_local_file_path, &sftp, &progress)?;
-                            directory_progress.as_ref().map(|p| p.inc(len));
+                            if let Some(p) = directory_progress.as_ref() { p.inc(len) }
                         }
                     }
                     RemoteFileEntry::Directory(source_path) => {
@@ -422,7 +422,7 @@ impl Rftp {
                             ));
                         } else {
                             job_queue.extend(
-                                RemoteFileEntry::read_dir(&source_path, &sftp)?
+                                RemoteFileEntry::read_dir(source_path, &sftp)?
                                     .into_iter()
                                     .map(|source_child| {
                                         (source_child, new_local_directory_path.clone())
@@ -452,18 +452,18 @@ impl Rftp {
                     user_message.report(&format!("Finished downloading \"{}\".", source_filename));
                 }
                 Err(error) => {
-                    user_message.error(&format!("Error: {}.", error.to_string()));
+                    user_message.error(&format!("Error: {}.", error));
                 }
             };
 
-            directory_progress.map(|p| p.finish());
+            if let Some(p) = directory_progress { p.finish() }
 
             if let Err(error) = files
                 .lock()
                 .unwrap()
                 .fetch_local_files(show_hidden_files.load(Ordering::Relaxed))
             {
-                user_message.error(&format!("Error: {}.", error.to_string()));
+                user_message.error(&format!("Error: {}.", error));
             }
         });
     }

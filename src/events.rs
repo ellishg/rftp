@@ -1,5 +1,5 @@
 use crossbeam_channel::{tick, unbounded, Receiver, RecvError};
-use crossterm;
+
 use std::thread;
 use std::time::{Duration, Instant};
 

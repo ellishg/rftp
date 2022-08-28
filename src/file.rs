@@ -1,8 +1,8 @@
 use crate::progress::ProgressFile;
 use crate::utils::{bytes_to_string, get_remote_home_dir, Result};
 
-use libssh2_sys;
-use ssh2;
+
+
 use std::borrow::Cow;
 use std::env;
 use std::fs::{canonicalize, metadata, read_dir, File};
@@ -70,7 +70,7 @@ pub fn download(
     progress: &ProgressFile,
 ) -> io::Result<()> {
     assert!(source.is_file(), "Source must be a file!");
-    let mut source = sftp.open(&source.path())?;
+    let mut source = sftp.open(source.path())?;
     let mut dest = File::create(dest)?;
     let mut buffer = [0; CHUNK_SIZE];
 
@@ -141,7 +141,7 @@ pub trait FileEntry {
         } else {
             // A file is hidden if its name begins with a '.'
             let filename = self.path().file_name().unwrap();
-            filename.to_str().unwrap().chars().next() == Some('.')
+            filename.to_str().unwrap().starts_with('.')
         }
     }
 
@@ -154,7 +154,7 @@ pub trait FileEntry {
         } else if self.is_file() {
             let file_len_string = self
                 .len()
-                .map(|len| bytes_to_string(len))
+                .map(bytes_to_string)
                 .unwrap_or(String::from(""));
             let width = width - (file_len_string.len() + 1);
             Text::styled(

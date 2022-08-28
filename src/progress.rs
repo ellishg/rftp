@@ -292,7 +292,7 @@ impl ProgressFile {
         let bitrate = self.get_current_bitrate();
         let eta = self
             .get_eta()
-            .map(|eta| duration_to_string(eta))
+            .map(duration_to_string)
             .unwrap_or("??:??".to_string());
         let info = format!(
             "{}/{}  {}  {} ETA",

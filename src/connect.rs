@@ -1,5 +1,5 @@
 use crate::utils::{ErrorKind, Result};
-use base64;
+
 use dirs::home_dir;
 use rpassword::prompt_password_stdout;
 use std::collections::HashSet;
@@ -90,7 +90,7 @@ fn authenticate_host(
 
             let mut input = String::new();
             stdin().read_line(&mut input)?;
-            match input.trim().as_ref() {
+            match input.trim() {
                 "Y" | "y" | "YES" | "Yes" | "yes" => {
                     known_hosts.add(destination, key, "", key_type.into())?;
                     known_hosts.write_file(&known_hosts_path, ssh2::KnownHostFileKind::OpenSSH)?;
@@ -121,7 +121,7 @@ fn authenticate_session(session: ssh2::Session, username: &str) -> Result<ssh2::
             break;
         }
 
-        let auth_methods: HashSet<&str> = session.auth_methods(username)?.split(",").collect();
+        let auth_methods: HashSet<&str> = session.auth_methods(username)?.split(',').collect();
 
         if auth_methods.contains("publickey") {
             session.userauth_agent(username).ok();

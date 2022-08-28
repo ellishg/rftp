@@ -1,4 +1,4 @@
-use ssh2;
+
 use std::io::Read;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -118,7 +118,7 @@ pub fn bytes_to_string(num_bytes: u64) -> String {
 /// Return a `Buffer` that is the same, but with the default style.
 pub fn buffer_without_style(buffer: &Buffer) -> Buffer {
     let mut buffer = buffer.clone();
-    let rect = buffer.area().clone();
+    let rect = *buffer.area();
     for x in rect.x..rect.width {
         for y in rect.y..rect.height {
             buffer.get_mut(x, y).set_style(Style::default());
