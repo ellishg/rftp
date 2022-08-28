@@ -150,7 +150,10 @@ pub trait FileEntry {
             // Text::Styled(Cow::Borrowed(".."), Style::default().fg(Color::Red))
             Text::raw("⬅")
         } else if self.is_file() {
-            let file_len_string = self.len().map(bytes_to_string).unwrap_or(String::from(""));
+            let file_len_string = self
+                .len()
+                .map(bytes_to_string)
+                .unwrap_or_else(|| String::from(""));
             let width = width - (file_len_string.len() + 1);
             Text::styled(
                 format!(
@@ -331,7 +334,7 @@ impl FileList {
         keep_hidden_files: bool,
     ) -> Result<Self> {
         let local_path = env::current_dir()?;
-        let remote_path = get_remote_home_dir(session).unwrap_or(PathBuf::from("./"));
+        let remote_path = get_remote_home_dir(session).unwrap_or_else(|_| PathBuf::from("./"));
 
         let mut list = FileList {
             local_directory: PathBuf::new(),

@@ -293,7 +293,7 @@ impl ProgressFile {
         let eta = self
             .get_eta()
             .map(duration_to_string)
-            .unwrap_or("??:??".to_string());
+            .unwrap_or_else(|| "??:??".to_string());
         let info = format!(
             "{}/{}  {}  {} ETA",
             bytes_to_string(self.bytes_sent.load(Ordering::Relaxed)),
