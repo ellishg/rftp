@@ -1,8 +1,6 @@
 use crate::progress::ProgressFile;
 use crate::utils::{bytes_to_string, get_remote_home_dir, Result};
 
-
-
 use std::borrow::Cow;
 use std::env;
 use std::fs::{canonicalize, metadata, read_dir, File};
@@ -152,10 +150,7 @@ pub trait FileEntry {
             // Text::Styled(Cow::Borrowed(".."), Style::default().fg(Color::Red))
             Text::raw("⬅")
         } else if self.is_file() {
-            let file_len_string = self
-                .len()
-                .map(bytes_to_string)
-                .unwrap_or(String::from(""));
+            let file_len_string = self.len().map(bytes_to_string).unwrap_or(String::from(""));
             let width = width - (file_len_string.len() + 1);
             Text::styled(
                 format!(

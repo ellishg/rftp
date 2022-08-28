@@ -4,7 +4,6 @@ use crate::progress::{ProgressBars, ProgressDirectory, ProgressFile};
 use crate::user_message::UserMessage;
 use crate::utils::{ErrorKind, Result};
 
-
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use std::collections::VecDeque;
@@ -285,10 +284,8 @@ impl Rftp {
                             ));
                         } else {
                             let progress = {
-                                let title = format!(
-                                    "Uploading \"{}\"",
-                                    source.file_name_lossy().unwrap()
-                                );
+                                let title =
+                                    format!("Uploading \"{}\"", source.file_name_lossy().unwrap());
                                 Arc::new(ProgressFile::new(&title, len))
                             };
                             progress_bars
@@ -298,7 +295,9 @@ impl Rftp {
 
                             upload(source, new_remote_file_path, sftp, &progress)?;
 
-                            if let Some(p) = directory_progress.as_ref() { p.inc(len) }
+                            if let Some(p) = directory_progress.as_ref() {
+                                p.inc(len)
+                            }
                         }
                     }
                     LocalFileEntry::Directory(source_path) => {
@@ -343,7 +342,9 @@ impl Rftp {
                 }
             };
 
-            if let Some(p) = directory_progress { p.finish() }
+            if let Some(p) = directory_progress {
+                p.finish()
+            }
 
             if let Err(error) = files
                 .lock()
@@ -411,7 +412,9 @@ impl Rftp {
                                 .push_file_progress(Arc::clone(&progress));
 
                             download(source, new_local_file_path, &sftp, &progress)?;
-                            if let Some(p) = directory_progress.as_ref() { p.inc(len) }
+                            if let Some(p) = directory_progress.as_ref() {
+                                p.inc(len)
+                            }
                         }
                     }
                     RemoteFileEntry::Directory(source_path) => {
@@ -456,7 +459,9 @@ impl Rftp {
                 }
             };
 
-            if let Some(p) = directory_progress { p.finish() }
+            if let Some(p) = directory_progress {
+                p.finish()
+            }
 
             if let Err(error) = files
                 .lock()
