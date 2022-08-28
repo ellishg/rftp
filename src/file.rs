@@ -319,7 +319,7 @@ impl RemoteFileEntry {
             // NOTE: `stat` will fail if this path does not exist on the remote host. We
             //        assume this is the case when `stat` returns `LIBSSH2_ERROR_SFTP_PROTOCOL`.
             Err(error) => match error.code() {
-                libssh2_sys::LIBSSH2_ERROR_SFTP_PROTOCOL => Ok(false),
+                ssh2::ErrorCode::Session(libssh2_sys::LIBSSH2_ERROR_SFTP_PROTOCOL) => Ok(false),
                 _ => Err(error.into()),
             },
             Ok(_) => Ok(true),
