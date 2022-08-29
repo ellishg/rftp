@@ -5,7 +5,8 @@ use std::time::{Duration, Instant};
 use tui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
-    widgets::{Paragraph, Text},
+    text::{Span, Spans},
+    widgets::{Paragraph, Wrap},
 };
 
 /// The max number of messages.
@@ -33,12 +34,12 @@ impl UserMessage {
 
     /// Report a message to the user that will last for `MAX_MESSAGE_AGE`.
     pub fn warn(&self, message: &str) {
-        self.report_with_style(message, Style::new().fg(Color::Yellow));
+        self.report_with_style(message, Style::default().fg(Color::Yellow));
     }
 
     /// Report a message to the user that will last for `MAX_MESSAGE_AGE`.
     pub fn error(&self, message: &str) {
-        self.report_with_style(message, Style::new().fg(Color::Red));
+        self.report_with_style(message, Style::default().fg(Color::Red));
     }
 
     /// Report a message to the user that will last for `MAX_MESSAGE_AGE`.
@@ -106,11 +107,11 @@ impl UserMessage {
                 .split(rect);
             let (rect, message_rect) = (chunks[0], chunks[1]);
 
-            let items: Vec<Text> = lines
+            let items: Vec<Spans> = lines
                 .into_iter()
-                .map(|(line, style)| Text::styled(format!("{}\n", line), style))
+                .map(|(line, style)| Span::styled(format!("{}\n", line), style).into())
                 .collect();
-            let paragraph = Paragraph::new(items.iter()).wrap(true);
+            let paragraph = Paragraph::new(items).wrap(Wrap { trim: true });
             frame.render_widget(paragraph, message_rect);
 
             rect
@@ -135,9 +136,9 @@ mod tests {
         message.report("Another short message.");
 
         terminal
-            .draw(|mut frame| {
+            .draw(|frame| {
                 let rect = frame.size();
-                message.draw(&mut frame, rect);
+                message.draw(frame, rect);
             })
             .unwrap();
 

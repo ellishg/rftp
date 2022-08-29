@@ -479,16 +479,16 @@ impl Rftp {
     }
 
     /// Draw the current state.
-    pub fn draw<B>(&self, mut frame: tui::terminal::Frame<B>)
+    pub fn draw<B>(&self, frame: &mut tui::terminal::Frame<B>)
     where
         B: tui::backend::Backend,
     {
         let rect = frame.size();
-        let rect = self.user_message.draw(&mut frame, rect);
+        let rect = self.user_message.draw(frame, rect);
 
-        let rect = self.progress_bars.lock().unwrap().draw(&mut frame, rect);
+        let rect = self.progress_bars.lock().unwrap().draw(frame, rect);
 
-        self.files.lock().unwrap().draw(&mut frame, rect);
+        self.files.lock().unwrap().draw(frame, rect);
     }
 }
 

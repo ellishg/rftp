@@ -10,7 +10,8 @@ use std::path::{Path, PathBuf};
 use tui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
-    widgets::{Block, Borders, List, ListState, Text},
+    text::Text,
+    widgets::{Block, Borders, List, ListItem, ListState},
 };
 
 const FILELIST_FILE_COLOR: Color = Color::Green;
@@ -534,10 +535,7 @@ impl FileList {
         self.apply_op_to_selected(|i| i);
     }
 
-    fn generate_list<'a, T>(title: &'a str, items: T) -> List<'a, T>
-    where
-        T: Iterator<Item = Text<'a>>,
-    {
+    fn generate_list<'a>(title: &'a str, items: Vec<ListItem<'a>>) -> List<'a> {
         List::new(items)
             .block(Block::default().title(title).borders(Borders::ALL))
             .highlight_style(Style::default().bg(FILELIST_HIGHLIGHT_COLOR))
@@ -557,14 +555,22 @@ impl FileList {
 
         let title = format!("Local: {:?}", self.get_local_working_path());
         let width = (local_rect.width - 4) as usize;
-        let items = self.local_entries.iter().map(|entry| entry.to_text(width));
+        let items: Vec<_> = self
+            .local_entries
+            .iter()
+            .map(|entry| ListItem::new(entry.to_text(width)))
+            .collect();
         let mut state = self.get_local_selected_index();
         let list = Self::generate_list(&title, items);
         frame.render_stateful_widget(list, local_rect, &mut state);
 
         let title = format!("Remote: {:?}", self.get_remote_working_path());
         let width = (remote_rect.width - 4) as usize;
-        let items = self.remote_entries.iter().map(|entry| entry.to_text(width));
+        let items: Vec<_> = self
+            .remote_entries
+            .iter()
+            .map(|entry| ListItem::new(entry.to_text(width)))
+            .collect();
         let mut state = self.get_remote_selected_index();
         let list = Self::generate_list(&title, items);
         frame.render_stateful_widget(list, remote_rect, &mut state);
@@ -574,7 +580,7 @@ impl FileList {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::buffer_without_style;
+    use crate::utils::assert_buffer_symbols_eq;
     use tui::{backend::TestBackend, buffer::Buffer, Terminal};
 
     #[test]
@@ -601,24 +607,22 @@ mod tests {
         let mut terminal = Terminal::new(TestBackend::new(50, 8)).unwrap();
 
         terminal
-            .draw(|mut frame| {
+            .draw(|frame| {
                 let rect = frame.size();
-                file_list.draw(&mut frame, rect);
+                file_list.draw(frame, rect);
             })
             .unwrap();
 
-        assert_eq!(
-            buffer_without_style(terminal.backend().buffer()),
-            Buffer::with_lines(vec![
-                "┌Local: \"/a/b/c\"────────┐┌Remote: \"home/files\"───┐",
-                "│⬅                      ││  ⬅                    │",
-                "│myfile.txt    30.0 KB  ││  pic.png       55.0 KB│",
-                "│myotherfile.dat 128 B  ││>>movie.mkv    123.0 MB│",
-                "│important/             ││  games/               │",
-                "│                       ││  trash/               │",
-                "│                       ││                       │",
-                "└───────────────────────┘└───────────────────────┘",
-            ])
-        );
+        let expected = Buffer::with_lines(vec![
+            "┌Local: \"/a/b/c\"────────┐┌Remote: \"home/files\"───┐",
+            "│⬅                      ││  ⬅                    │",
+            "│myfile.txt    30.0 KB  ││  pic.png       55.0 KB│",
+            "│myotherfile.dat 128 B  ││>>movie.mkv    123.0 MB│",
+            "│important/             ││  games/               │",
+            "│                       ││  trash/               │",
+            "│                       ││                       │",
+            "└───────────────────────┘└───────────────────────┘",
+        ]);
+        assert_buffer_symbols_eq(terminal.backend().buffer(), &expected);
     }
 }

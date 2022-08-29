@@ -7,7 +7,8 @@ use std::time::{Duration, Instant};
 use tui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
-    widgets::{Gauge, Paragraph, Text},
+    text::Text,
+    widgets::{Gauge, Paragraph},
 };
 
 /// The max age of any item in the history.
@@ -162,7 +163,7 @@ impl ProgressDirectory {
 
         let text = Text::styled(label, Style::default().fg(PROGRESSBAR_COLOR));
 
-        frame.render_widget(Paragraph::new([text].iter()), rect);
+        frame.render_widget(Paragraph::new(text), rect);
     }
 }
 
@@ -320,7 +321,7 @@ impl ProgressFile {
         };
         let gauge = Gauge::default()
             .style(Style::default().fg(PROGRESSBAR_COLOR))
-            .label(&label)
+            .label(label)
             .ratio(self.get_ratio());
 
         frame.render_widget(gauge, rect);
@@ -330,7 +331,7 @@ impl ProgressFile {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::buffer_without_style;
+    use crate::utils::assert_buffer_symbols_eq;
     use tui::{backend::TestBackend, buffer::Buffer, Terminal};
 
     #[test]
@@ -338,7 +339,7 @@ mod tests {
         let mut terminal = Terminal::new(TestBackend::new(60, 8)).unwrap();
 
         terminal
-            .draw(|mut frame| {
+            .draw(|frame| {
                 let rect = frame.size();
                 let mut bars = ProgressBars::new();
                 bars.push_file_progress(Arc::new(ProgressFile::new("just_started.txt", 100)));
@@ -378,22 +379,20 @@ mod tests {
                     }
                 };
                 bars.push_file_progress(Arc::new(with_history));
-                bars.draw(&mut frame, rect);
+                bars.draw(frame, rect);
             })
             .unwrap();
 
-        assert_eq!(
-            buffer_without_style(terminal.backend().buffer()),
-            Buffer::with_lines(vec![
-                "                                                            ",
-                "                                                            ",
-                "/some/directory                              6.9 KB  2 Files",
-                "/some/other/directory                         9.9 KB  1 File",
-                "just_started.txt               0 B/100 B  0 bit/s  ??:?? ETA",
-                "this_is_a_really_long_filename 0 B/100 B  0 bit/s  ??:?? ETA",
-                "finished.jpg                 100 B/100 B  0 bit/s  00:00 ETA",
-                "with_history.dat         0 B/1.0 MB  131.1 Kbit/s  01:01 ETA",
-            ])
-        );
+        let expected = Buffer::with_lines(vec![
+            "                                                            ",
+            "                                                            ",
+            "/some/directory                              6.9 KB  2 Files",
+            "/some/other/directory                         9.9 KB  1 File",
+            "just_started.txt               0 B/100 B  0 bit/s  ??:?? ETA",
+            "this_is_a_really_long_filename 0 B/100 B  0 bit/s  ??:?? ETA",
+            "finished.jpg                 100 B/100 B  0 bit/s  00:00 ETA",
+            "with_history.dat         0 B/1.0 MB  131.1 Kbit/s  01:01 ETA",
+        ]);
+        assert_buffer_symbols_eq(terminal.backend().buffer(), &expected);
     }
 }

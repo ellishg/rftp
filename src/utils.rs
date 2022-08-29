@@ -2,7 +2,7 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::time::Duration;
 use thiserror::Error;
-use tui::{buffer::Buffer, style::Style};
+use tui::buffer::Buffer;
 
 pub type Result<T> = std::result::Result<T, ErrorKind>;
 
@@ -114,16 +114,24 @@ pub fn bytes_to_string(num_bytes: u64) -> String {
 }
 
 #[allow(dead_code)]
-/// Return a `Buffer` that is the same, but with the default style.
-pub fn buffer_without_style(buffer: &Buffer) -> Buffer {
-    let mut buffer = buffer.clone();
-    let rect = *buffer.area();
-    for x in rect.x..rect.width {
-        for y in rect.y..rect.height {
-            buffer.get_mut(x, y).set_style(Style::default());
+pub fn assert_buffer_symbols_eq(left: &Buffer, right: &Buffer) {
+    assert_eq!(left.area, right.area);
+    for (index, (a, b)) in left
+        .content()
+        .iter()
+        .zip(right.content().iter())
+        .enumerate()
+    {
+        if a.symbol != b.symbol {
+            let index = index as u16;
+            let x = index % left.area.width;
+            let y = index / left.area.width;
+            panic!(
+                "assertion failed: `mismatching cell at ({}, {})`\n  left: `{}`\n right: `{}`",
+                x, y, a.symbol, b.symbol
+            );
         }
     }
-    buffer
 }
 
 #[cfg(test)]
