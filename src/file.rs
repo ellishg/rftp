@@ -318,9 +318,9 @@ impl RemoteFileEntry {
     pub fn exists(path: impl AsRef<Path>, sftp: &ssh2::Sftp) -> Result<bool> {
         match sftp.stat(path.as_ref()) {
             // NOTE: `stat` will fail if this path does not exist on the remote host. We
-            //        assume this is the case when `stat` returns `LIBSSH2_ERROR_SFTP_PROTOCOL`.
+            //        assume this is the case when `stat` returns `LIBSSH2_FX_NO_SUCH_FILE`.
             Err(error) => match error.code() {
-                ssh2::ErrorCode::Session(libssh2_sys::LIBSSH2_ERROR_SFTP_PROTOCOL) => Ok(false),
+                ssh2::ErrorCode::SFTP(libssh2_sys::LIBSSH2_FX_NO_SUCH_FILE) => Ok(false),
                 _ => Err(error.into()),
             },
             Ok(_) => Ok(true),
