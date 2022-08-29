@@ -18,6 +18,6 @@ jobs:
           toolchain: stable
           override: true
 
-      - run: cargo publish --token ${CARGO_REGISTRY_TOKEN} --dry-run
+      - run: cargo publish --token ${CARGO_REGISTRY_TOKEN}
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
