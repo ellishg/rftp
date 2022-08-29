@@ -88,12 +88,14 @@ impl Rftp {
             KeyEvent {
                 code: KeyCode::Char('Q'),
                 modifiers: KeyModifiers::SHIFT,
+                ..
             } => {
                 self.is_alive = false;
             }
             KeyEvent {
                 code: KeyCode::Char('q'),
                 modifiers: KeyModifiers::NONE,
+                ..
             } => {
                 if self.progress_bars.lock().unwrap().is_empty() {
                     self.is_alive = false;
@@ -106,6 +108,7 @@ impl Rftp {
             KeyEvent {
                 code: KeyCode::Enter,
                 modifiers: KeyModifiers::NONE,
+                ..
             } => {
                 let mut files = self.files.lock().unwrap();
                 match files.get_selected_entry() {
@@ -147,6 +150,7 @@ impl Rftp {
             KeyEvent {
                 code: KeyCode::Char(' '),
                 modifiers: KeyModifiers::NONE,
+                ..
             } => {
                 let files = self.files.lock().unwrap();
                 match files.get_selected_entry() {
@@ -169,44 +173,53 @@ impl Rftp {
             KeyEvent {
                 code: KeyCode::Char('j'),
                 modifiers: KeyModifiers::NONE,
+                ..
             }
             | KeyEvent {
                 code: KeyCode::Down,
                 modifiers: KeyModifiers::NONE,
+                ..
             } => {
                 self.files.lock().unwrap().next_selected();
             }
             KeyEvent {
                 code: KeyCode::Char('k'),
                 modifiers: KeyModifiers::NONE,
+                ..
             }
             | KeyEvent {
                 code: KeyCode::Up,
                 modifiers: KeyModifiers::NONE,
+                ..
             } => {
                 self.files.lock().unwrap().prev_selected();
             }
             KeyEvent {
                 code: KeyCode::Char('h'),
                 modifiers: KeyModifiers::NONE,
+                ..
             }
             | KeyEvent {
                 code: KeyCode::Char('l'),
                 modifiers: KeyModifiers::NONE,
+                ..
             }
             | KeyEvent {
                 code: KeyCode::Left,
                 modifiers: KeyModifiers::NONE,
+                ..
             }
             | KeyEvent {
                 code: KeyCode::Right,
                 modifiers: KeyModifiers::NONE,
+                ..
             } => {
                 self.files.lock().unwrap().toggle_selected();
             }
             KeyEvent {
                 code: KeyCode::Char('z'),
                 modifiers: KeyModifiers::NONE,
+                ..
             } => {
                 let show_hidden_files = !self.show_hidden_files.fetch_xor(true, Ordering::Relaxed);
                 self.user_message.report(&format!(
@@ -220,6 +233,7 @@ impl Rftp {
             KeyEvent {
                 code: KeyCode::Char('?'),
                 modifiers: KeyModifiers::NONE,
+                ..
             } => {
                 self.user_message.report(&format!(
                     "Controls for rftp version {}.

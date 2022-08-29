@@ -51,9 +51,6 @@ pub enum ErrorKind {
     Ssh2Error(#[from] ssh2::Error),
 
     #[error(transparent)]
-    CrosstermError(#[from] crossterm::ErrorKind),
-
-    #[error(transparent)]
     IOError(#[from] std::io::Error),
 
     #[error(transparent)]

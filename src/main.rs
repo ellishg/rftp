@@ -14,7 +14,7 @@ mod utils;
 use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 use events::{Event, EventListener};
 use rftp::Rftp;
-use std::io::{stdout, Stdout, Write};
+use std::io::{stdout, Stdout};
 use tui::{backend::CrosstermBackend, Terminal};
 use utils::Result;
 
